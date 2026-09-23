@@ -59,8 +59,8 @@ client.on('ready', () => {
 });
 
 client.on('message_create', async (msg) => {
-    // 1. Ignorar estados de WhatsApp y listas de difusión
-    if (msg.isStatus || msg.from === 'status@broadcast' || msg.broadcast) return;
+    // 1. Ignorar estados de WhatsApp, listas de difusión y mensajes propios
+    if (msg.fromMe || msg.isStatus || msg.from === 'status@broadcast' || msg.broadcast) return;
 
     // Log de visibilidad para diagnóstico
     console.log(`[WhatsApp Event] type=${msg.type}, from=${msg.from}, to=${msg.to}, hasMedia=${msg.hasMedia}, fromMe=${msg.fromMe}`);
