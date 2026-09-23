@@ -1,0 +1,25 @@
+{
+  "name": "prueba-whatsapp-web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:cola": "node scripts/test-cola-pendientes.js",
+    "test:archivos": "node scripts/probar-archivos.js",
+    "postinstall": "node scripts/patch-wwebjs.js"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.2",
+    "groq-sdk": "^1.6.0",
+    "pdf-parse": "^2.4.5",
+    "pdf-poppler": "^0.2.3",
+    "pdfkit": "^0.20.2",
+    "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.35.4",
+    "whatsapp-web.js": "^1.34.7"
+  }
+}
