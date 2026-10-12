@@ -172,8 +172,6 @@ client.on('message_create', async (msg) => {
                     } else if (resultado.rutaUsada !== 'ignorado') {
                         console.warn(`[!] Procesamiento con problemas → ${resultado.nombreArchivo}`);
                     }
-
-                    // TODO: Enviar resultado.datos a API o base de datos PHP
                 }
             } else {
                 console.log(`[index] Mensaje de texto ignorado (sin comprobante pendiente) de ${remitente}: "${textoLimpio}"`);

@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { analizarImagen, analizarTexto } = require('./services/iaService');
 const { extraerTexto, pdfAImagen, imagenAPdf } = require('./services/pdfService');
+const { insertarComprobante } = require('./services/dbConexion');
 const { tieneTextoFinanciero, validarDatosExtraidos, generarNombreArchivo } = require('./utils/validators');
 
 // Carpeta de salida — todo se guarda como PDF
@@ -181,6 +182,21 @@ async function guardarComprobante(preparado, nombreCliente) {
     try {
         fs.writeFileSync(rutaArchivo, bufferPdf);
         console.log(`[mediaHandler] Guardado: ${nombreArchivo} (ruta: ${rutaUsada})`);
+
+        if (datos && typeof datos === 'object') {
+            try {
+                const idInsertado = await insertarComprobante(datos, {
+                    ruta: rutaArchivo,
+                    nombreArchivo,
+                    cliente: nombreCliente ?? null
+                });
+                if (idInsertado != null) {
+                    console.log(`[mediaHandler] Comprobante persistido en BD con ID: ${idInsertado}`);
+                }
+            } catch (dbError) {
+                console.warn(`[mediaHandler] No se pudo guardar en BD (el PDF sí quedó en disco): ${dbError.message}`);
+            }
+        }
 
         return {
             exito: !tipoError,
