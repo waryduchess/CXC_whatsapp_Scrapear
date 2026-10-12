@@ -3,6 +3,58 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { procesarMedia } = require('./mediaHandler'); // 2. Importar el orquestador
 const { colaPendientes } = require('./services/colaPendientes'); // 3. Gestor de mensajes pendientes
+const { filtroMensajes } = require('./services/filtroMensajes');
+const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
+
+async function mensajeConIdentidadTelefonica(msg) {
+    const chatId = msg.from;
+    const identidad = msg.author || chatId;
+    if (!identidad?.endsWith('@lid') || typeof msg.getContact !== 'function') {
+        return msg;
+    }
+
+    try {
+        const contacto = await msg.getContact();
+        const id = contacto?.id?._serialized || contacto?.id?.$1;
+        const numero = contacto?.number;
+        const identidadReal = id?.endsWith('@c.us') ? id : numero ? `${numero}@c.us` : null;
+
+        if (!identidadReal) {
+            console.warn(`[index] No se pudo resolver el número real de ${identidad}`);
+            return msg;
+        }
+
+        return {
+            ...msg,
+            client: msg.client,
+            ...(chatId.endsWith('@lid')
+                ? { from: identidadReal }
+                : { author: identidadReal })
+        };
+    } catch (error) {
+        console.warn(`[index] No se pudo resolver el contacto ${identidad}:`, error.message || error);
+        return msg;
+    }
+}
+
+function listaDesdeEnv(nombre) {
+    return (process.env[nombre] || '')
+        .split(',')
+        .map(valor => valor.trim())
+        .filter(Boolean);
+}
+
+const modoFiltro = process.env.FILTRO_MODO || 'todos';
+const modosValidos = ['todos', 'whitelist', 'blacklist', 'solo_privados', 'solo_grupos'];
+if (!modosValidos.includes(modoFiltro)) {
+    throw new Error(`FILTRO_MODO inválido: "${modoFiltro}". Valores permitidos: ${modosValidos.join(', ')}`);
+}
+
+filtroMensajes.setModo(modoFiltro);
+listaDesdeEnv('NUMEROS_PERMITIDOS').forEach(numero => filtroMensajes.agregarNumeroPermitido(numero));
+listaDesdeEnv('NUMEROS_BLOQUEADOS').forEach(numero => filtroMensajes.agregarNumeroBloqueado(numero));
+listaDesdeEnv('GRUPOS_PERMITIDOS').forEach(grupo => filtroMensajes.agregarGrupoPermitido(grupo));
+listaDesdeEnv('GRUPOS_BLOQUEADOS').forEach(grupo => filtroMensajes.agregarGrupoBloqueado(grupo));
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -54,16 +106,41 @@ client.on('qr', (qr) => {
     console.log('Escanea este código QR con tu aplicación de WhatsApp.');
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log('¡Cliente de WhatsApp listo y escuchando mensajes!');
+    try {
+        const chats = await obtenerGruposBasicos(client);
+        client.__gruposPorId = new Map(
+            chats
+                .map(chat => [
+                    chat.id?._serialized || chat.id?.$1 || chat.id?.toString?.() || chat.id,
+                    chat
+                ])
+                .filter(([id]) => typeof id === 'string' && id.endsWith('@g.us'))
+        );
+        console.log(`[filtroGrupos] Grupos cargados para resolución por nombre: ${client.__gruposPorId.size}`);
+    } catch (error) {
+        console.warn('[filtroGrupos] No se pudo cargar la lista de grupos:', error.message || error);
+    }
 });
 
 client.on('message_create', async (msg) => {
-    // 1. Ignorar estados de WhatsApp y listas de difusión
-    if (msg.isStatus || msg.from === 'status@broadcast' || msg.broadcast) return;
+    // 1. Ignorar estados de WhatsApp, listas de difusión y mensajes propios
+    if (msg.fromMe || msg.isStatus || msg.from === 'status@broadcast' || msg.broadcast) return;
+
+    const mensajeConContacto = await mensajeConIdentidadTelefonica(msg);
+    const mensajeParaFiltro = await resolverNombreGrupo(mensajeConContacto);
+    if (mensajeParaFiltro.groupId && mensajeParaFiltro.groupName) {
+        filtroMensajes.registrarNombreGrupo(mensajeParaFiltro.groupId, mensajeParaFiltro.groupName);
+    }
+    const evaluacion = filtroMensajes.evaluarMensaje(mensajeParaFiltro);
+    if (!evaluacion.permitido) {
+        console.log(`[index] Mensaje descartado por filtro: ${evaluacion.razon}`);
+        return;
+    }
 
     // Log de visibilidad para diagnóstico
-    console.log(`[WhatsApp Event] type=${msg.type}, from=${msg.from}, to=${msg.to}, hasMedia=${msg.hasMedia}, fromMe=${msg.fromMe}`);
+    console.log(`[WhatsApp Event] type=${msg.type}, from=${msg.from}, group=${mensajeParaFiltro.groupId || 'privado'}, to=${msg.to}, hasMedia=${msg.hasMedia}, fromMe=${msg.fromMe}`);
 
     // 2. Ignorar explícitamente stickers, audios, notas de voz, videos, reacciones
     if (['sticker', 'ptt', 'audio', 'video', 'reaction'].includes(msg.type)) return;
@@ -142,8 +219,6 @@ client.on('message_create', async (msg) => {
 
         /*
         Pendientes por implementar:
-        - Filtros: números de teléfono específicos, grupos específicos
-        - Ignorar estados de WhatsApp
         - Sincronización con OneDrive
         - Categorización: conciliado vs. no conciliado
         */

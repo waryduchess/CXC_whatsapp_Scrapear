@@ -7,8 +7,13 @@
 const Groq = require('groq-sdk');
 const sharp = require('sharp');
 
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+if (!GROQ_API_KEY || !GROQ_API_KEY.trim()) {
+    throw new Error('Falta GROQ_API_KEY. Crea un archivo .env con la clave antes de iniciar el bot.');
+}
+
 // Inicialización del cliente de Groq utilizando la variable de entorno
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = new Groq({ apiKey: GROQ_API_KEY });
 const GROQ_MODEL = "qwen/qwen3.8-27b";
 
 /**

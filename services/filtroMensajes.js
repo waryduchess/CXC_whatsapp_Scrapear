@@ -3,8 +3,11 @@
  * Módulo de filtrado de números de teléfono y grupos de WhatsApp.
  * Permite controlar qué remitentes o grupos tienen permitido enviar comprobantes.
  * 
- * NOTA: Diseñado de forma aislada. No está conectado a index.js todavía.
+ * Se evalúa al inicio del flujo de mensajes en index.js.
  */
+
+const { FiltroGrupos } = require('./filtroGrupos');
+const { FiltroNumeros } = require('./filtroNumeros');
 
 class FiltroMensajes {
     /**
@@ -12,21 +15,23 @@ class FiltroMensajes {
      * @param {'todos'|'whitelist'|'blacklist'|'solo_privados'|'solo_grupos'} [config.modo='todos'] - Modo de filtrado
      * @param {string[]} [config.numerosPermitidos=[]] - Números autorizados (whitelist)
      * @param {string[]} [config.numerosBloqueados=[]] - Números bloqueados (blacklist)
-     * @param {string[]} [config.gruposPermitidos=[]] - IDs de grupos autorizados
-     * @param {string[]} [config.gruposBloqueados=[]] - IDs de grupos bloqueados
+     * @param {string[]} [config.gruposPermitidos=[]] - IDs o nombres exactos de grupos autorizados
+     * @param {string[]} [config.gruposBloqueados=[]] - IDs o nombres exactos de grupos bloqueados
      * @param {boolean} [config.permitirGrupos=true] - Si false, descarta cualquier grupo
      * @param {boolean} [config.permitirPrivados=true] - Si false, descarta chats individuales
      */
     constructor(config = {}) {
         this.modo = config.modo || 'todos';
 
-        // Sets para búsquedas O(1) con números normalizados
-        this.numerosPermitidos = new Set((config.numerosPermitidos || []).map(n => this.normalizarNumero(n)));
-        this.numerosBloqueados = new Set((config.numerosBloqueados || []).map(n => this.normalizarNumero(n)));
+        this.filtroNumeros = new FiltroNumeros(
+            config.numerosPermitidos || [],
+            config.numerosBloqueados || []
+        );
 
-        // Sets para IDs de grupos (ej: '120363028123456789@g.us')
-        this.gruposPermitidos = new Set(config.gruposPermitidos || []);
-        this.gruposBloqueados = new Set(config.gruposBloqueados || []);
+        this.filtroGrupos = new FiltroGrupos(
+            config.gruposPermitidos || [],
+            config.gruposBloqueados || []
+        );
 
         this.permitirGrupos = config.permitirGrupos !== false;
         this.permitirPrivados = config.permitirPrivados !== false;
@@ -40,20 +45,7 @@ class FiltroMensajes {
      * @returns {string} Solo dígitos normalizados
      */
     normalizarNumero(raw) {
-        if (!raw || typeof raw !== 'string') return '';
-
-        // Extraer la parte antes del @ si viene como WID de WhatsApp (ej: '521999...@c.us')
-        const parteNumero = raw.split('@')[0];
-
-        // Remover todo lo que no sea dígito
-        let limpio = parteNumero.replace(/\D/g, '');
-
-        // Normalización para números de México: eliminar el '1' móvil internacional (521XXXXXXXXXX -> 52XXXXXXXXXX)
-        if (limpio.startsWith('521') && limpio.length === 13) {
-            limpio = '52' + limpio.slice(3);
-        }
-
-        return limpio;
+        return this.filtroNumeros.normalizar(raw);
     }
 
     /**
@@ -62,7 +54,7 @@ class FiltroMensajes {
      * @returns {boolean}
      */
     esGrupo(chatId) {
-        return Boolean(chatId && chatId.endsWith('@g.us'));
+        return this.filtroGrupos.esGrupo(chatId);
     }
 
     /**
@@ -78,8 +70,9 @@ class FiltroMensajes {
             return { permitido: false, razon: 'Mensaje nulo o no definido' };
         }
 
-        const chatId = msg.from;
+        const chatId = msg.groupId || msg.from;
         const esGrupo = this.esGrupo(chatId);
+        const nombreGrupo = msg.groupName;
 
         // Remitente real: en grupos es msg.author, en chats individuales es msg.from
         const remitenteId = esGrupo ? (msg.author || msg.from) : msg.from;
@@ -96,16 +89,18 @@ class FiltroMensajes {
 
         // ── 2. Filtro de Grupo específico ──
         if (esGrupo) {
-            if (this.gruposBloqueados.has(chatId)) {
+            if (this.filtroGrupos.bloqueado(chatId, nombreGrupo)) {
                 return { permitido: false, razon: `Grupo en lista negra (${chatId})` };
             }
-            if (this.modo === 'whitelist' && this.gruposPermitidos.size > 0 && !this.gruposPermitidos.has(chatId)) {
+            if (this.modo === 'whitelist' &&
+                (this.filtroGrupos.gruposPermitidos.size > 0) &&
+                !this.filtroGrupos.permitido(chatId, nombreGrupo)) {
                 return { permitido: false, razon: `Grupo no está en lista blanca (${chatId})` };
             }
         }
 
         // ── 3. Filtro por Remitente / Número ──
-        if (numeroRemitente && this.numerosBloqueados.has(numeroRemitente)) {
+        if (this.filtroNumeros.estaBloqueado(numeroRemitente)) {
             return { permitido: false, razon: `Número en lista negra (${numeroRemitente})` };
         }
 
@@ -132,8 +127,8 @@ class FiltroMensajes {
 
             case 'whitelist':
                 // En modo whitelist, debe estar explícitamente en numerosPermitidos o gruposPermitidos
-                const estaEnNumeros = numeroRemitente && this.numerosPermitidos.has(numeroRemitente);
-                const estaEnGrupos = esGrupo && this.gruposPermitidos.has(chatId);
+                const estaEnNumeros = this.filtroNumeros.estaPermitido(numeroRemitente);
+                const estaEnGrupos = esGrupo && this.filtroGrupos.permitido(chatId, nombreGrupo);
 
                 if (estaEnNumeros || estaEnGrupos) {
                     return { permitido: true, razon: 'Autorizado por lista blanca' };
@@ -148,31 +143,31 @@ class FiltroMensajes {
     // ── Métodos para manipulación dinámica en tiempo de ejecución ──
 
     agregarNumeroPermitido(numero) {
-        const norm = this.normalizarNumero(numero);
-        if (norm) this.numerosPermitidos.add(norm);
+        this.filtroNumeros.agregarPermitido(numero);
     }
 
     quitarNumeroPermitido(numero) {
-        const norm = this.normalizarNumero(numero);
-        if (norm) this.numerosPermitidos.delete(norm);
+        this.filtroNumeros.quitarPermitido(numero);
     }
 
     agregarNumeroBloqueado(numero) {
-        const norm = this.normalizarNumero(numero);
-        if (norm) this.numerosBloqueados.add(norm);
+        this.filtroNumeros.agregarBloqueado(numero);
     }
 
     quitarNumeroBloqueado(numero) {
-        const norm = this.normalizarNumero(numero);
-        if (norm) this.numerosBloqueados.delete(norm);
+        this.filtroNumeros.quitarBloqueado(numero);
     }
 
     agregarGrupoPermitido(grupoId) {
-        if (grupoId) this.gruposPermitidos.add(grupoId);
+        this.filtroGrupos.agregarPermitido(grupoId);
     }
 
     agregarGrupoBloqueado(grupoId) {
-        if (grupoId) this.gruposBloqueados.add(grupoId);
+        this.filtroGrupos.agregarBloqueado(grupoId);
+    }
+
+    registrarNombreGrupo(chatId, nombre) {
+        this.filtroGrupos.registrarNombre(chatId, nombre);
     }
 
     setModo(nuevoModo) {
