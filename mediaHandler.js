@@ -19,6 +19,19 @@ if (!fs.existsSync(COMPROBANTES_DIR)) {
 }
 
 /**
+ * Formatea una fecha como YYYY-MM-DD usando la zona horaria local.
+ *
+ * @param {Date} fecha
+ * @returns {string}
+ */
+function formatearFechaLocal(fecha) {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+}
+
+/**
  * Resuelve colisiones de nombres en el directorio de salida.
  * Si "Juan.pdf" ya existe, devuelve "Juan_2.pdf", etc.
  * 
@@ -146,9 +159,10 @@ async function prepararComprobante(media) {
  * 
  * @param {Object} preparado - Objeto retornado por prepararComprobante
  * @param {string|null} nombreCliente - Nombre del cliente asignado
- * @returns {Promise<{ exito: boolean, datos: Object|null, nombreArchivo: string|null, ruta: string|null, rutaUsada: string }>}
+ * @param {{ fechaRecepcion?: number|Date }} [opciones] - Opciones; fechaRecepcion es cuándo llegó el comprobante
+ * @returns {Promise<{ exito: boolean, datos: Object|null, nombreArchivo: string|null, ruta: string|null, rutaUsada: string, fechaRecepcion: string }>}
  */
-async function guardarComprobante(preparado, nombreCliente) {
+async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
     const { bufferPdf, datos, tipoError: errorInicial, rutaUsada } = preparado;
 
     if (rutaUsada === 'ignorado' || !bufferPdf) {
@@ -157,7 +171,8 @@ async function guardarComprobante(preparado, nombreCliente) {
             datos: null,
             nombreArchivo: null,
             ruta: null,
-            rutaUsada: rutaUsada || 'ignorado'
+            rutaUsada: rutaUsada || 'ignorado',
+            fechaRecepcion: formatearFechaLocal(opciones.fechaRecepcion ? new Date(opciones.fechaRecepcion) : new Date())
         };
     }
 
@@ -175,9 +190,16 @@ async function guardarComprobante(preparado, nombreCliente) {
         }
     }
 
+    const fechaRecepcion = opciones.fechaRecepcion ? new Date(opciones.fechaRecepcion) : new Date();
+    const fechaRecepcionStr = formatearFechaLocal(fechaRecepcion);
+    const carpetaDia = path.join(COMPROBANTES_DIR, fechaRecepcionStr);
+    if (!fs.existsSync(carpetaDia)) {
+        fs.mkdirSync(carpetaDia, { recursive: true });
+    }
+
     const nombreBase = generarNombreArchivo(nombreCliente, tipoError);
-    const nombreArchivo = resolverNombreUnico(COMPROBANTES_DIR, nombreBase);
-    const rutaArchivo = path.join(COMPROBANTES_DIR, nombreArchivo);
+    const nombreArchivo = resolverNombreUnico(carpetaDia, nombreBase);
+    const rutaArchivo = path.join(carpetaDia, nombreArchivo);
 
     try {
         fs.writeFileSync(rutaArchivo, bufferPdf);
@@ -188,7 +210,8 @@ async function guardarComprobante(preparado, nombreCliente) {
                 const idInsertado = await insertarComprobante(datos, {
                     ruta: rutaArchivo,
                     nombreArchivo,
-                    cliente: nombreCliente ?? null
+                    cliente: nombreCliente ?? null,
+                    fechaRecepcion
                 });
                 if (idInsertado != null) {
                     console.log(`[mediaHandler] Comprobante persistido en BD con ID: ${idInsertado}`);
@@ -203,7 +226,8 @@ async function guardarComprobante(preparado, nombreCliente) {
             datos,
             nombreArchivo,
             ruta: rutaArchivo,
-            rutaUsada
+            rutaUsada,
+            fechaRecepcion: fechaRecepcionStr
         };
     } catch (saveError) {
         console.error('[mediaHandler] Error al guardar archivo final:', saveError.message);
@@ -212,7 +236,8 @@ async function guardarComprobante(preparado, nombreCliente) {
             datos: null,
             nombreArchivo: null,
             ruta: null,
-            rutaUsada
+            rutaUsada,
+            fechaRecepcion: fechaRecepcionStr
         };
     }
 }

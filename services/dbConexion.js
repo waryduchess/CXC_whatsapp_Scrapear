@@ -19,6 +19,16 @@ function configConexion() {
   };
 }
 
+function formatearFecha(fecha) {
+  if (!fecha) return null;
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (isNaN(d.getTime())) return null;
+  const anio = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${anio}-${mes}-${dia}`;
+}
+
 async function insertarComprobante(datos, archivo = {}) {
   if (!datos || typeof datos !== 'object') {
     return null;
@@ -29,8 +39,8 @@ async function insertarComprobante(datos, archivo = {}) {
   try {
     const query = `
       INSERT INTO comprobantes
-      (banco_origen, cuenta_origen_digitos, banco_destino, cuenta_destino_digitos, monto, fecha, hora_operacion, folio, referencia, autenticacion, clave_rastreo, concepto, cliente, nombre_archivo, ruta_archivo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (banco_origen, cuenta_origen_digitos, banco_destino, cuenta_destino_digitos, monto, fecha, hora_operacion, folio, referencia, autenticacion, clave_rastreo, concepto, cliente, nombre_archivo, ruta_archivo, fecha_recepcion)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -48,7 +58,8 @@ async function insertarComprobante(datos, archivo = {}) {
       datos.concepto ?? null,
       archivo.cliente ?? null,
       archivo.nombreArchivo ?? null,
-      archivo.ruta ?? null
+      archivo.ruta ?? null,
+      formatearFecha(archivo.fechaRecepcion)
     ];
 
     const [result] = await connection.execute(query, values);

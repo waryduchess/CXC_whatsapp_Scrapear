@@ -143,7 +143,7 @@ class ColaPendientes {
                 console.warn(`[colaPendientes] Se omite el comprobante de ${remitente}: la preparación no produjo resultado (media inválido o análisis fallido).`);
                 continue;
             }
-            const res = await this.fnGuardar(preparado, nombreCliente);
+            const res = await this.fnGuardar(preparado, nombreCliente, { fechaRecepcion: item.timestamp });
             resultados.push(res);
         }
 
@@ -168,7 +168,7 @@ class ColaPendientes {
                 console.warn(`[colaPendientes] Se omite el comprobante de ${remitente}: la preparación no produjo resultado (media inválido o análisis fallido).`);
                 continue;
             }
-            const res = await this.fnGuardar(preparado, null);
+            const res = await this.fnGuardar(preparado, null, { fechaRecepcion: item.timestamp });
             resultados.push(res);
         }
 

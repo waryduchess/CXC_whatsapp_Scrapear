@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "start:vista": "node vista/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:cola": "node scripts/test-cola-pendientes.js",
     "test:archivos": "node scripts/probar-archivos.js",

@@ -18,5 +18,6 @@ CREATE TABLE IF NOT EXISTS comprobantes (
     cliente VARCHAR(255) NULL,
     nombre_archivo VARCHAR(255) NULL,
     ruta_archivo VARCHAR(500) NULL,
+    fecha_recepcion DATE NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

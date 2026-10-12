@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprobantes — Vista</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Comprobantes de pago</h1>
+        <div class="barra-controles">
+            <div class="grupo-periodo">
+                <button class="btn-periodo" data-periodo="dia" type="button">Día</button>
+                <button class="btn-periodo" data-periodo="semana" type="button">Semana</button>
+                <button class="btn-periodo" data-periodo="mes" type="button">Mes</button>
+            </div>
+            <div class="grupo-fecha">
+                <label for="input-fecha">Fecha</label>
+                <input type="date" id="input-fecha">
+            </div>
+            <button id="btn-csv" type="button" disabled>Descargar CSV</button>
+        </div>
+        <div class="barra-resumen">
+            <span id="txt-rango"></span>
+            <span id="txt-total" class="total"></span>
+            <span id="estado-carga" class="carga"></span>
+            <span id="cargar-error" class="error"></span>
+        </div>
+    </header>
+
+    <main>
+        <div class="tabla-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha recepción</th>
+                        <th>Banco origen</th>
+                        <th>Cuenta origen</th>
+                        <th>Banco destino</th>
+                        <th>Cuenta destino</th>
+                        <th class="num">Monto</th>
+                        <th>Fecha operación</th>
+                        <th>Hora</th>
+                        <th>Folio</th>
+                        <th>Referencia</th>
+                        <th>Autenticación</th>
+                        <th>Clave rastreo</th>
+                        <th>Concepto</th>
+                        <th>Cliente</th>
+                        <th>Archivo</th>
+                        <th>Ruta</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-cuerpo"></tbody>
+            </table>
+            <div id="fila-vacia" class="vacio">Sin comprobantes en el rango seleccionado.</div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Bot de comprobantes CXC — Vista de datos</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
