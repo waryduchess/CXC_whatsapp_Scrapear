@@ -99,6 +99,7 @@ try {
 
     $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
     $lanzador = Join-Path $project 'windows\lanzador.vbs'
+    $icono = Join-Path $project 'windows\cxc-whatsapp.ico'
     $shell = New-Object -ComObject WScript.Shell
 
     function Crear-Acceso($ruta, $argumentos, $descripcion) {
@@ -107,7 +108,11 @@ try {
         $acceso.Arguments = $argumentos
         $acceso.WorkingDirectory = $project
         $acceso.Description = $descripcion
-        $acceso.IconLocation = "$env:WINDIR\System32\imageres.dll,109"
+        if (Test-Path $icono) {
+            $acceso.IconLocation = "$icono,0"
+        } else {
+            $acceso.IconLocation = "$env:WINDIR\System32\imageres.dll,109"
+        }
         $acceso.Save()
     }
 

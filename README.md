@@ -60,6 +60,7 @@ HTTPS (requiere Git instalado) y `.npmrc` permite que Puppeteer descargue Chrome
 3. Usa el acceso `CXC WhatsApp` del Escritorio para abrir el panel. Si el servicio no está
    corriendo, el lanzador lo inicia sin mostrar ventanas negras.
 4. El acceso de Inicio arranca el servicio y abre el panel al iniciar sesión en Windows.
+5. Ambos accesos usan el icono `windows\cxc-whatsapp.ico`.
 
 Requisitos: Node.js 18 o superior, Git y Chrome o Edge. El servicio arranca al iniciar
 sesión, no antes del login. Si el puerto 3001 está ocupado, cambia `PANEL_PORT` en `.env`

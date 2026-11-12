@@ -113,7 +113,8 @@ CXC_whatsapp_Scrapear/
 ├── windows/
 │   ├── lanzador.vbs            # Arranque silencioso y apertura del panel
 │   ├── instalar-windows.ps1    # Instalación y accesos directos
-│   └── instalar-windows.bat    # Lanzador del instalador
+│   ├── instalar-windows.bat    # Lanzador del instalador
+│   └── cxc-whatsapp.ico        # Icono de los accesos de Escritorio e Inicio
 ├── comprobantes/               # Salida (PDF) por fecha YYYY-MM-DD
 ├── scripts/
 │   └── probar-archivos.js      # Prueba sin WhatsApp
@@ -154,7 +155,8 @@ CXC_whatsapp_Scrapear/
 - Un watchdog revisa Chromium cada 30 segundos y sale si el navegador o la página se caen;
   PM2 vuelve a iniciar el proceso.
 - En Windows, `windows\instalar-windows.bat` instala dependencias, PM2 local y crea los
-  accesos de Escritorio e Inicio. El arranque es al iniciar sesión, no antes del login.
+  accesos de Escritorio e Inicio con el icono `windows\cxc-whatsapp.ico`. El arranque es al
+  iniciar sesión, no antes del login.
 - El lanzador `windows\lanzador.vbs` verifica `/api/salud`, inicia o recarga PM2 y abre el
   panel en Chrome o Edge; si no existen, usa el navegador predeterminado.
 
