@@ -1,7 +1,7 @@
 # Memoria del Proceso — Almacenamiento de Comprobantes vía WhatsApp
 
 > Documento vivo con las decisiones y la arquitectura actual del sistema.
-> Última actualización: 2026-11-10
+> Última actualización: 2026-11-12
 
 ---
 
@@ -18,7 +18,8 @@ No se analiza el contenido ni se persiste en base de datos: solo se almacenan lo
 ## 2. Flujo de Entrada
 
 - Se usa `whatsapp-web.js` con `LocalAuth` para mantener la sesión.
-- Se filtran los mensajes según `FILTRO_MODO`, números y grupos configurados en `.env`.
+- Se filtran los mensajes según `FILTRO_MODO`, números y grupos. La configuración se toma
+  de `config/filtros.json` si existe (guardada desde el panel); si no, de `.env`.
 - Cuando llega un mensaje con media:
   - Se toma el **caption** (`msg.body`) como nombre del archivo.
   - Se descarga el archivo con `msg.downloadMedia()`.
@@ -90,7 +91,9 @@ comprobantes/{YYYY-MM-DD}/{CAPTION}.pdf
 
 ```
 CXC_whatsapp_Scrapear/
-├── .env                        # Filtros de mensajes y PANEL_PORT
+├── .env                        # Filtros iniciales y PANEL_PORT
+├── config/
+│   └── filtros.json            # Filtros guardados desde el panel (prioridad sobre .env)
 ├── index.js                    # Punto de entrada: WhatsApp, panel y watchdog
 ├── mediaHandler.js             # Convierte a PDF y guarda el archivo
 ├── ecosystem.config.js         # Configuración de PM2
@@ -100,6 +103,7 @@ CXC_whatsapp_Scrapear/
 ├── services/
 │   ├── estado.js               # Estado compartido y eventos
 │   ├── logger.js               # Buffer de registros y captura de consola
+│   ├── configFiltros.js        # Validación y persistencia de filtros
 │   ├── filtroGrupos.js         # Resolución de grupos
 │   ├── filtroMensajes.js       # Filtro principal
 │   ├── filtroNumeros.js        # Filtro de números
@@ -127,6 +131,7 @@ CXC_whatsapp_Scrapear/
 | `panel/server.js` | Servir el panel, API local, SSE y descarga de comprobantes |
 | `services/estado.js` | Mantener el estado compartido y emitir eventos |
 | `services/logger.js` | Guardar los últimos registros y emitirlos en vivo |
+| `services/configFiltros.js` | Validar, guardar y aplicar `config/filtros.json` |
 | `services/pdfService.js` | `imagenAPdf(buffer, mimetype)` y `normalizarImagen` |
 | `utils/validators.js` | `generarNombreArchivo(caption)` |
 | `services/filtro*.js` | Filtrar por modo, números y grupos |
@@ -139,7 +144,11 @@ CXC_whatsapp_Scrapear/
 - Puerto por defecto: `3001`, configurable con `PANEL_PORT` en `.env`.
 - Muestra estado, QR, cuenta conectada, filtros, registros y comprobantes por fecha.
 - La API interna expone `/api/salud`, `/api/estado`, `/api/logs`, `/api/eventos`,
-  `/api/comprobantes`, `/api/reiniciar` y `/api/abrir-carpeta`.
+  `/api/comprobantes`, `/api/filtros`, `/api/grupos`, `/api/reiniciar` y `/api/abrir-carpeta`.
+- El botón **Editar** abre un modal con pestañas General/Números/Grupos. Los filtros se
+  guardan en `config/filtros.json` (escritura atómica), se aplican en caliente y se
+  notifican por SSE. `POST /api/filtros` valida modo, números y grupos; `GET /api/grupos`
+  lista los grupos conocidos para el selector.
 - El botón de reinicio solo funciona bajo PM2 (`process.env.pm_id`).
 - PM2 usa `ecosystem.config.js` con autorestart, backoff, límite de memoria y logs en `logs/`.
 - Un watchdog revisa Chromium cada 30 segundos y sale si el navegador o la página se caen;

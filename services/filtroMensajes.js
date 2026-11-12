@@ -142,6 +142,36 @@ class FiltroMensajes {
 
     // ── Métodos para manipulación dinámica en tiempo de ejecución ──
 
+    obtenerConfiguracion() {
+        return {
+            modo: this.modo,
+            numerosPermitidos: [...this.filtroNumeros.numerosPermitidos],
+            numerosBloqueados: [...this.filtroNumeros.numerosBloqueados],
+            gruposPermitidos: [...this.filtroGrupos.gruposPermitidos],
+            gruposBloqueados: [...this.filtroGrupos.gruposBloqueados],
+            permitirGrupos: this.permitirGrupos,
+            permitirPrivados: this.permitirPrivados
+        };
+    }
+
+    reemplazarConfiguracion(config = {}) {
+        if (config.modo) this.setModo(config.modo);
+        this.filtroNumeros.reemplazar(
+            config.numerosPermitidos || [],
+            config.numerosBloqueados || []
+        );
+        this.filtroGrupos.reemplazar(
+            config.gruposPermitidos || [],
+            config.gruposBloqueados || []
+        );
+        if (typeof config.permitirGrupos === 'boolean') {
+            this.permitirGrupos = config.permitirGrupos;
+        }
+        if (typeof config.permitirPrivados === 'boolean') {
+            this.permitirPrivados = config.permitirPrivados;
+        }
+    }
+
     agregarNumeroPermitido(numero) {
         this.filtroNumeros.agregarPermitido(numero);
     }

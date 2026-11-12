@@ -6,6 +6,12 @@ const { URL } = require('url');
 const { estado, eventos, obtenerEstado } = require('../services/estado');
 const { obtenerLogs } = require('../services/logger');
 const { COMPROBANTES_DIR } = require('../mediaHandler');
+const {
+    validarConfig,
+    guardarConfig,
+    aplicarConfig,
+    obtenerConfigActual
+} = require('../services/configFiltros');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -68,17 +74,65 @@ function origenPermitido(req, puerto) {
 
 function resumenFiltros() {
     try {
-        const { filtroMensajes } = require('../services/filtroMensajes');
-        return {
-            modo: filtroMensajes.modo,
-            numerosPermitidos: [...filtroMensajes.filtroNumeros.numerosPermitidos],
-            numerosBloqueados: [...filtroMensajes.filtroNumeros.numerosBloqueados],
-            gruposPermitidos: [...filtroMensajes.filtroGrupos.gruposPermitidos],
-            gruposBloqueados: [...filtroMensajes.filtroGrupos.gruposBloqueados]
-        };
+        return obtenerConfigActual();
     } catch (error) {
         return null;
     }
+}
+
+function leerCuerpoJson(req, limite = 32768) {
+    return new Promise((resolve, reject) => {
+        const tipo = String(req.headers['content-type'] || '')
+            .split(';')[0]
+            .trim()
+            .toLowerCase();
+
+        if (tipo !== 'application/json') {
+            const error = new Error('El Content-Type debe ser application/json');
+            error.status = 415;
+            reject(error);
+            return;
+        }
+
+        let total = 0;
+        let excedido = false;
+        const partes = [];
+
+        req.on('data', (trozo) => {
+            if (excedido) return;
+            total += trozo.length;
+            if (total > limite) {
+                excedido = true;
+                partes.length = 0;
+                return;
+            }
+            partes.push(trozo);
+        });
+
+        req.on('end', () => {
+            if (excedido) {
+                const error = new Error('El cuerpo de la solicitud es demasiado grande');
+                error.status = 413;
+                reject(error);
+                return;
+            }
+
+            try {
+                const texto = Buffer.concat(partes).toString('utf8');
+                resolve(JSON.parse(texto));
+            } catch (error) {
+                const invalido = new Error('El cuerpo no contiene JSON válido');
+                invalido.status = 400;
+                reject(invalido);
+            }
+        });
+
+        req.on('error', (error) => {
+            const fallo = new Error(error.message || 'No se pudo leer la solicitud');
+            fallo.status = 400;
+            reject(fallo);
+        });
+    });
 }
 
 function listarFechas() {
@@ -312,6 +366,65 @@ async function manejarApi(req, res, url, puerto, opciones) {
 
     if (pathname === '/api/estado' && req.method === 'GET') {
         return responderJson(res, 200, { ...obtenerEstado(), filtros: resumenFiltros() });
+    }
+
+    if (pathname === '/api/filtros' && req.method === 'GET') {
+        return responderJson(res, 200, { ok: true, filtros: obtenerConfigActual() });
+    }
+
+    if (pathname === '/api/filtros' && req.method === 'POST') {
+        if (!origenPermitido(req, puerto)) {
+            return responderJson(res, 403, { ok: false, error: 'Origen no permitido' });
+        }
+
+        let datos;
+        try {
+            datos = await leerCuerpoJson(req);
+        } catch (error) {
+            return responderJson(res, error.status || 400, { ok: false, error: error.message });
+        }
+
+        const validacion = validarConfig(datos);
+        if (!validacion.valido) {
+            return responderJson(res, 400, {
+                ok: false,
+                error: validacion.errores.join(' '),
+                errores: validacion.errores
+            });
+        }
+
+        try {
+            guardarConfig(validacion.config);
+            aplicarConfig(validacion.config);
+        } catch (error) {
+            console.error('[panel] No se pudieron guardar los filtros:', error.message || error);
+            return responderJson(res, 500, {
+                ok: false,
+                error: 'No se pudieron guardar los filtros. Revisa los registros.'
+            });
+        }
+
+        return responderJson(res, 200, {
+            ok: true,
+            filtros: obtenerConfigActual(),
+            advertencias: validacion.advertencias
+        });
+    }
+
+    if (pathname === '/api/grupos' && req.method === 'GET') {
+        try {
+            const grupos = await opciones.obtenerGrupos?.();
+            return responderJson(res, 200, {
+                ok: true,
+                grupos: Array.isArray(grupos) ? grupos : []
+            });
+        } catch (error) {
+            console.error('[panel] No se pudieron obtener los grupos:', error.message || error);
+            return responderJson(res, 500, {
+                ok: false,
+                error: 'No se pudieron obtener los grupos'
+            });
+        }
     }
 
     if (pathname === '/api/logs' && req.method === 'GET') {

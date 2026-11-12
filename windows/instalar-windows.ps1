@@ -115,7 +115,7 @@ try {
     $inicio = [Environment]::GetFolderPath('Startup')
 
     Crear-Acceso (Join-Path $escritorio 'CXC WhatsApp.lnk') "`"$lanzador`"" 'Abrir panel de CXC WhatsApp'
-    Crear-Acceso (Join-Path $inicio 'CXC WhatsApp.lnk') "`"$lanzador`" --no-open" 'Iniciar CXC WhatsApp al iniciar sesion'
+    Crear-Acceso (Join-Path $inicio 'CXC WhatsApp.lnk') "`"$lanzador`"" 'Iniciar CXC WhatsApp y abrir el panel al iniciar sesion'
 
     Escribir ""
     Escribir "Instalacion completa." 'Green'

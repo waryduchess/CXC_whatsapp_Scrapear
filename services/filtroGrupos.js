@@ -65,6 +65,17 @@ class FiltroGrupos {
         return this.estaEnLista(this.gruposBloqueados, chatId, nombreGrupo);
     }
 
+    reemplazar(permitidos = [], bloqueados = []) {
+        const limpiar = (lista) => new Set(
+            lista
+                .map(grupo => (typeof grupo === 'string' ? grupo.trim() : ''))
+                .filter(Boolean)
+        );
+
+        this.gruposPermitidos = limpiar(permitidos);
+        this.gruposBloqueados = limpiar(bloqueados);
+    }
+
     agregarPermitido(grupo) {
         if (grupo) this.gruposPermitidos.add(grupo.trim());
     }

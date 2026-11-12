@@ -32,6 +32,15 @@ class FiltroNumeros {
         return Boolean(normalizado && this.numerosBloqueados.has(normalizado));
     }
 
+    reemplazar(permitidos = [], bloqueados = []) {
+        this.numerosPermitidos = new Set(
+            permitidos.map(numero => this.normalizar(numero)).filter(Boolean)
+        );
+        this.numerosBloqueados = new Set(
+            bloqueados.map(numero => this.normalizar(numero)).filter(Boolean)
+        );
+    }
+
     agregarPermitido(numero) {
         const normalizado = this.normalizar(numero);
         if (normalizado) this.numerosPermitidos.add(normalizado);

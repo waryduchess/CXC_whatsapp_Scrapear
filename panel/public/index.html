@@ -76,7 +76,10 @@
                 </article>
 
                 <article class="card">
-                    <h2>Filtros activos</h2>
+                    <div class="card-head">
+                        <h2>Filtros activos</h2>
+                        <button id="btn-editar-filtros" class="btn btn-small btn-primary" type="button">Editar</button>
+                    </div>
                     <div id="filtros" class="filtros"></div>
                 </article>
             </div>
@@ -134,6 +137,95 @@
             </article>
         </section>
     </main>
+
+    <div id="modal-filtros" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-filtros-titulo">
+        <div class="modal-backdrop" data-cerrar-filtros></div>
+        <div class="modal-panel">
+            <div class="modal-head">
+                <div>
+                    <h2 id="modal-filtros-titulo">Editar filtros</h2>
+                    <p class="muted">Los cambios se aplican al instante y se guardan en config/filtros.json.</p>
+                </div>
+                <button id="btn-cerrar-filtros" class="btn btn-small" type="button" aria-label="Cerrar">Cerrar</button>
+            </div>
+
+            <div class="modal-body">
+                <nav class="modal-tabs" role="tablist" aria-label="Secciones de filtros">
+                    <button class="modal-tab active" data-filtro-tab="general" role="tab" aria-selected="true">General</button>
+                    <button class="modal-tab" data-filtro-tab="numeros" role="tab" aria-selected="false">Números</button>
+                    <button class="modal-tab" data-filtro-tab="grupos" role="tab" aria-selected="false">Grupos</button>
+                </nav>
+
+                <div class="modal-content">
+                    <section class="filtro-panel active" data-filtro-panel="general" role="tabpanel">
+                        <label class="field">
+                            <span>Modo de filtrado</span>
+                            <select id="filtro-modo">
+                                <option value="todos">Todos</option>
+                                <option value="whitelist">Whitelist (solo autorizados)</option>
+                                <option value="blacklist">Blacklist (bloquear listados)</option>
+                                <option value="solo_privados">Solo chats privados</option>
+                                <option value="solo_grupos">Solo grupos</option>
+                            </select>
+                        </label>
+                        <p id="filtro-modo-ayuda" class="hint"></p>
+                    </section>
+
+                    <section class="filtro-panel" data-filtro-panel="numeros" role="tabpanel">
+                        <div class="field">
+                            <span>Números permitidos</span>
+                            <div id="chips-numeros-permitidos" class="chips"></div>
+                            <div class="chip-input">
+                                <input id="input-numero-permitido" type="tel" placeholder="Ej. 529981483527" autocomplete="off">
+                                <button id="btn-agregar-numero-permitido" class="btn btn-small" type="button">Agregar</button>
+                            </div>
+                            <p class="hint">Separa varios números con comas. Se guardan sin espacios ni símbolos.</p>
+                        </div>
+
+                        <div class="field">
+                            <span>Números bloqueados</span>
+                            <div id="chips-numeros-bloqueados" class="chips"></div>
+                            <div class="chip-input">
+                                <input id="input-numero-bloqueado" type="tel" placeholder="Ej. 5219991234567" autocomplete="off">
+                                <button id="btn-agregar-numero-bloqueado" class="btn btn-small" type="button">Agregar</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="filtro-panel" data-filtro-panel="grupos" role="tabpanel">
+                        <div class="field">
+                            <span>Grupos permitidos</span>
+                            <div id="chips-grupos-permitidos" class="chips"></div>
+                            <div class="chip-input">
+                                <input id="input-grupo-permitido" type="text" list="lista-grupos" placeholder="Nombre o ID del grupo" autocomplete="off">
+                                <button id="btn-agregar-grupo-permitido" class="btn btn-small" type="button">Agregar</button>
+                            </div>
+                            <p class="hint">Puedes elegir un grupo conocido o escribir su nombre exacto.</p>
+                        </div>
+
+                        <div class="field">
+                            <span>Grupos bloqueados</span>
+                            <div id="chips-grupos-bloqueados" class="chips"></div>
+                            <div class="chip-input">
+                                <input id="input-grupo-bloqueado" type="text" list="lista-grupos" placeholder="Nombre o ID del grupo" autocomplete="off">
+                                <button id="btn-agregar-grupo-bloqueado" class="btn btn-small" type="button">Agregar</button>
+                            </div>
+                        </div>
+
+                        <datalist id="lista-grupos"></datalist>
+                    </section>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <p id="filtros-advertencia" class="advertencia hidden"></p>
+                <div class="actions">
+                    <button id="btn-cancelar-filtros" class="btn" type="button">Cancelar</button>
+                    <button id="btn-guardar-filtros" class="btn btn-primary" type="button">Guardar filtros</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
 

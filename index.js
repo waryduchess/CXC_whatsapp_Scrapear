@@ -9,6 +9,7 @@ const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
 const { estado, actualizarEstado, eventos } = require('./services/estado');
 const { iniciarPanel } = require('./panel/server');
+const { cargarConfig, configDesdeEntorno } = require('./services/configFiltros');
 
 async function mensajeConIdentidadTelefonica(msg) {
     const chatId = msg.from;
@@ -41,24 +42,10 @@ async function mensajeConIdentidadTelefonica(msg) {
     }
 }
 
-function listaDesdeEnv(nombre) {
-    return (process.env[nombre] || '')
-        .split(',')
-        .map(valor => valor.trim())
-        .filter(Boolean);
-}
-
-const modoFiltro = process.env.FILTRO_MODO || 'todos';
-const modosValidos = ['todos', 'whitelist', 'blacklist', 'solo_privados', 'solo_grupos'];
-if (!modosValidos.includes(modoFiltro)) {
-    throw new Error(`FILTRO_MODO inválido: "${modoFiltro}". Valores permitidos: ${modosValidos.join(', ')}`);
-}
-
-filtroMensajes.setModo(modoFiltro);
-listaDesdeEnv('NUMEROS_PERMITIDOS').forEach(numero => filtroMensajes.agregarNumeroPermitido(numero));
-listaDesdeEnv('NUMEROS_BLOQUEADOS').forEach(numero => filtroMensajes.agregarNumeroBloqueado(numero));
-listaDesdeEnv('GRUPOS_PERMITIDOS').forEach(grupo => filtroMensajes.agregarGrupoPermitido(grupo));
-listaDesdeEnv('GRUPOS_BLOQUEADOS').forEach(grupo => filtroMensajes.agregarGrupoBloqueado(grupo));
+const configGuardada = cargarConfig();
+const configInicial = configGuardada || configDesdeEntorno();
+filtroMensajes.reemplazarConfiguracion(configInicial);
+console.log(`[config] Filtros cargados desde ${configGuardada ? 'config/filtros.json' : '.env'}`);
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -76,6 +63,19 @@ const client = new Client({
         ]
     }
 });
+
+function obtenerGruposPanel() {
+    const mapa = client.__gruposPorId;
+    if (!mapa) return [];
+
+    return [...mapa.entries()]
+        .map(([id, chat]) => ({
+            id,
+            nombre: chat?.name || chat?.formattedTitle || ''
+        }))
+        .filter(grupo => /^\d+@g\.us$/.test(grupo.id))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
 
 let qrSecuencia = 0;
 let reiniciando = false;
@@ -347,6 +347,7 @@ client.on('message_create', async (msg) => {
 });
 
 iniciarPanel({
+    obtenerGrupos: obtenerGruposPanel,
     onReiniciar: async () => {
         reiniciando = true;
         actualizarEstado({ fase: 'reiniciando', detalle: 'Reiniciando servicio...' });

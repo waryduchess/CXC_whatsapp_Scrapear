@@ -23,10 +23,12 @@ El servicio levanta un panel en `http://127.0.0.1:3001` (se puede cambiar con
 
 - Estado de la conexión y cuenta de WhatsApp.
 - Código QR cuando hace falta vincular el dispositivo.
-- Filtros activos, registros en vivo y comprobantes por fecha.
+- Filtros activos editables (modo, números y grupos) sin tocar `.env`.
+- Registros en vivo y comprobantes por fecha.
 - Botones para reiniciar el servicio (bajo PM2) y abrir la carpeta de comprobantes.
 
-El panel solo escucha en `127.0.0.1`; no se expone a la red local.
+El panel solo escucha en `127.0.0.1`; no se expone a la red local. Los filtros guardados
+desde el panel se aplican al instante y quedan en `config/filtros.json`.
 
 ## Configuración
 
@@ -57,7 +59,7 @@ HTTPS (requiere Git instalado) y `.npmrc` permite que Puppeteer descargue Chrome
    dependencias, deja PM2 local y crea los accesos de Escritorio e Inicio.
 3. Usa el acceso `CXC WhatsApp` del Escritorio para abrir el panel. Si el servicio no está
    corriendo, el lanzador lo inicia sin mostrar ventanas negras.
-4. El acceso de Inicio arranca el servicio al iniciar sesión en Windows.
+4. El acceso de Inicio arranca el servicio y abre el panel al iniciar sesión en Windows.
 
 Requisitos: Node.js 18 o superior, Git y Chrome o Edge. El servicio arranca al iniciar
 sesión, no antes del login. Si el puerto 3001 está ocupado, cambia `PANEL_PORT` en `.env`
@@ -73,6 +75,9 @@ npm run pm2:logs
 
 ## Filtros
 
+Puedes configurarlos desde el botón **Editar** del panel (recomendado) o en `.env` como
+configuración inicial:
+
 ```env
 FILTRO_MODO=whitelist
 NUMEROS_PERMITIDOS=+52 1 999 123-4567,529994445566
@@ -82,8 +87,11 @@ GRUPOS_PERMITIDOS=Mi grupo de pagos,120363000000000001@g.us
 Modos disponibles: `todos`, `whitelist`, `blacklist`, `solo_privados`, `solo_grupos`.
 
 Los números se separan por comas y se normalizan automáticamente. Para grupos puedes usar
-el nombre visible exacto o el ID terminado en `@g.us`. Después de modificar `.env`,
-reinicia el bot.
+el nombre visible exacto o el ID terminado en `@g.us`.
+
+Cuando guardas los filtros desde el panel se crea `config/filtros.json`, que tiene
+prioridad sobre `.env`. Los cambios se aplican en caliente, sin reiniciar el bot. Si borras
+ese archivo, vuelven a usarse los valores de `.env`.
 
 Para permitir todo:
 

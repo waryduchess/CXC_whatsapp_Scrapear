@@ -8,7 +8,8 @@ const estadoApp = {
     pagina: 1,
     porPagina: 20,
     logs: [],
-    busquedaLog: ''
+    busquedaLog: '',
+    filtrosEditados: null
 };
 
 const el = {
@@ -42,7 +43,36 @@ const el = {
     buscarLog: document.getElementById('buscar-log'),
     btnLimpiarLogs: document.getElementById('btn-limpiar-logs'),
     logs: document.getElementById('logs'),
+    btnEditarFiltros: document.getElementById('btn-editar-filtros'),
+    modalFiltros: document.getElementById('modal-filtros'),
+    btnCerrarFiltros: document.getElementById('btn-cerrar-filtros'),
+    btnCancelarFiltros: document.getElementById('btn-cancelar-filtros'),
+    btnGuardarFiltros: document.getElementById('btn-guardar-filtros'),
+    filtroModo: document.getElementById('filtro-modo'),
+    filtroModoAyuda: document.getElementById('filtro-modo-ayuda'),
+    filtrosAdvertencia: document.getElementById('filtros-advertencia'),
+    chipsNumerosPermitidos: document.getElementById('chips-numeros-permitidos'),
+    chipsNumerosBloqueados: document.getElementById('chips-numeros-bloqueados'),
+    chipsGruposPermitidos: document.getElementById('chips-grupos-permitidos'),
+    chipsGruposBloqueados: document.getElementById('chips-grupos-bloqueados'),
+    inputNumeroPermitido: document.getElementById('input-numero-permitido'),
+    inputNumeroBloqueado: document.getElementById('input-numero-bloqueado'),
+    inputGrupoPermitido: document.getElementById('input-grupo-permitido'),
+    inputGrupoBloqueado: document.getElementById('input-grupo-bloqueado'),
+    btnAgregarNumeroPermitido: document.getElementById('btn-agregar-numero-permitido'),
+    btnAgregarNumeroBloqueado: document.getElementById('btn-agregar-numero-bloqueado'),
+    btnAgregarGrupoPermitido: document.getElementById('btn-agregar-grupo-permitido'),
+    btnAgregarGrupoBloqueado: document.getElementById('btn-agregar-grupo-bloqueado'),
+    listaGrupos: document.getElementById('lista-grupos'),
     toast: document.getElementById('toast')
+};
+
+const MODO_AYUDA = {
+    todos: 'Se procesan todos los mensajes, sin importar el remitente.',
+    whitelist: 'Solo se procesan los números y grupos de las listas permitidas.',
+    blacklist: 'Se procesan todos los mensajes excepto los números y grupos bloqueados.',
+    solo_privados: 'Solo se procesan chats individuales; los grupos se descartan.',
+    solo_grupos: 'Solo se procesan mensajes de grupos; los chats individuales se descartan.'
 };
 
 let toastTimer = null;
@@ -165,6 +195,276 @@ function renderFiltros(filtros) {
             : (valor || 'Ninguno');
         el.filtros.append(crearFiltro(etiqueta, texto));
     }
+}
+
+function mostrarAdvertencia(texto) {
+    el.filtrosAdvertencia.textContent = texto;
+    el.filtrosAdvertencia.classList.remove('hidden');
+}
+
+function limpiarAdvertencia() {
+    el.filtrosAdvertencia.textContent = '';
+    el.filtrosAdvertencia.classList.add('hidden');
+}
+
+function actualizarAyudaModo() {
+    el.filtroModoAyuda.textContent = MODO_AYUDA[el.filtroModo.value] || '';
+}
+
+function renderChips(contenedor, valores, campo) {
+    contenedor.replaceChildren();
+
+    if (!valores.length) {
+        const vacio = document.createElement('span');
+        vacio.className = 'muted';
+        vacio.textContent = 'Ninguno';
+        contenedor.append(vacio);
+        return;
+    }
+
+    for (const valor of valores) {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+
+        const texto = document.createElement('span');
+        texto.textContent = valor;
+
+        const quitar = document.createElement('button');
+        quitar.type = 'button';
+        quitar.className = 'chip-quitar';
+        quitar.textContent = '×';
+        quitar.setAttribute('aria-label', `Quitar ${valor}`);
+        quitar.addEventListener('click', () => {
+            if (!estadoApp.filtrosEditados) return;
+            const lista = estadoApp.filtrosEditados[campo];
+            const indice = lista.indexOf(valor);
+            if (indice >= 0) lista.splice(indice, 1);
+            renderChipsFiltros();
+        });
+
+        chip.append(texto, quitar);
+        contenedor.append(chip);
+    }
+}
+
+function renderChipsFiltros() {
+    if (!estadoApp.filtrosEditados) return;
+
+    renderChips(el.chipsNumerosPermitidos, estadoApp.filtrosEditados.numerosPermitidos, 'numerosPermitidos');
+    renderChips(el.chipsNumerosBloqueados, estadoApp.filtrosEditados.numerosBloqueados, 'numerosBloqueados');
+    renderChips(el.chipsGruposPermitidos, estadoApp.filtrosEditados.gruposPermitidos, 'gruposPermitidos');
+    renderChips(el.chipsGruposBloqueados, estadoApp.filtrosEditados.gruposBloqueados, 'gruposBloqueados');
+}
+
+function agregarValoresFiltro(campo, texto) {
+    if (!estadoApp.filtrosEditados) return;
+
+    const lista = estadoApp.filtrosEditados[campo];
+    const esGrupo = campo.startsWith('grupos');
+    const valores = String(texto || '')
+        .split(/[\n,]+/)
+        .map(valor => valor.trim())
+        .filter(Boolean);
+
+    for (const valor of valores) {
+        if (esGrupo) {
+            const existe = lista.some(item => item.toLocaleLowerCase('es-MX') === valor.toLocaleLowerCase('es-MX'));
+            if (!existe) lista.push(valor);
+        } else {
+            const digitos = valor.replace(/\D/g, '');
+            if (!digitos) continue;
+            const existe = lista.some(item => item.replace(/\D/g, '') === digitos);
+            if (!existe) lista.push(valor);
+        }
+    }
+
+    renderChipsFiltros();
+}
+
+function renderGruposDisponibles() {
+    const grupos = estadoApp.filtrosEditados?.gruposDisponibles || [];
+    el.listaGrupos.replaceChildren();
+    const vistos = new Set();
+
+    for (const grupo of grupos) {
+        const valor = grupo.nombre || grupo.id;
+        if (!valor || vistos.has(valor)) continue;
+        vistos.add(valor);
+
+        const opcion = document.createElement('option');
+        opcion.value = valor;
+        if (grupo.nombre && grupo.id) opcion.label = grupo.id;
+        el.listaGrupos.append(opcion);
+    }
+}
+
+async function cargarGruposModal() {
+    try {
+        const datos = await fetchJson('/api/grupos');
+        if (!estadoApp.filtrosEditados) return;
+        estadoApp.filtrosEditados.gruposDisponibles = datos.grupos || [];
+        renderGruposDisponibles();
+    } catch (error) {
+        console.error('No se pudieron cargar los grupos:', error);
+    }
+}
+
+function activarTabModal(nombre) {
+    for (const tab of el.modalFiltros.querySelectorAll('.modal-tab')) {
+        const activo = tab.dataset.filtroTab === nombre;
+        tab.classList.toggle('active', activo);
+        tab.setAttribute('aria-selected', activo ? 'true' : 'false');
+    }
+
+    for (const panel of el.modalFiltros.querySelectorAll('.filtro-panel')) {
+        panel.classList.toggle('active', panel.dataset.filtroPanel === nombre);
+    }
+}
+
+async function abrirModalFiltros() {
+    let filtros = estadoApp.estado?.filtros;
+
+    if (!filtros) {
+        try {
+            const datos = await fetchJson('/api/filtros');
+            filtros = datos.filtros;
+        } catch (error) {
+            mostrarToast(error.message);
+            return;
+        }
+    }
+
+    estadoApp.filtrosEditados = {
+        modo: filtros?.modo || 'todos',
+        numerosPermitidos: [...(filtros?.numerosPermitidos || [])],
+        numerosBloqueados: [...(filtros?.numerosBloqueados || [])],
+        gruposPermitidos: [...(filtros?.gruposPermitidos || [])],
+        gruposBloqueados: [...(filtros?.gruposBloqueados || [])],
+        permitirGrupos: filtros?.permitirGrupos !== false,
+        permitirPrivados: filtros?.permitirPrivados !== false,
+        gruposDisponibles: estadoApp.filtrosEditados?.gruposDisponibles || []
+    };
+
+    el.filtroModo.value = estadoApp.filtrosEditados.modo;
+    actualizarAyudaModo();
+    limpiarAdvertencia();
+    renderChipsFiltros();
+    renderGruposDisponibles();
+    activarTabModal('general');
+    el.modalFiltros.classList.remove('hidden');
+    cargarGruposModal();
+}
+
+function cerrarModalFiltros() {
+    el.modalFiltros.classList.add('hidden');
+    limpiarAdvertencia();
+    estadoApp.filtrosEditados = null;
+}
+
+async function guardarFiltros() {
+    if (!estadoApp.filtrosEditados) return;
+
+    const config = {
+        modo: estadoApp.filtrosEditados.modo,
+        numerosPermitidos: estadoApp.filtrosEditados.numerosPermitidos,
+        numerosBloqueados: estadoApp.filtrosEditados.numerosBloqueados,
+        gruposPermitidos: estadoApp.filtrosEditados.gruposPermitidos,
+        gruposBloqueados: estadoApp.filtrosEditados.gruposBloqueados,
+        permitirGrupos: estadoApp.filtrosEditados.permitirGrupos,
+        permitirPrivados: estadoApp.filtrosEditados.permitirPrivados
+    };
+
+    el.btnGuardarFiltros.disabled = true;
+    limpiarAdvertencia();
+
+    try {
+        const datos = await fetchJson('/api/filtros', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+
+        const filtros = datos.filtros || config;
+        if (estadoApp.estado) estadoApp.estado.filtros = filtros;
+        renderFiltros(filtros);
+
+        estadoApp.filtrosEditados = {
+            modo: filtros.modo,
+            numerosPermitidos: [...(filtros.numerosPermitidos || [])],
+            numerosBloqueados: [...(filtros.numerosBloqueados || [])],
+            gruposPermitidos: [...(filtros.gruposPermitidos || [])],
+            gruposBloqueados: [...(filtros.gruposBloqueados || [])],
+            permitirGrupos: filtros.permitirGrupos !== false,
+            permitirPrivados: filtros.permitirPrivados !== false,
+            gruposDisponibles: estadoApp.filtrosEditados.gruposDisponibles
+        };
+
+        el.filtroModo.value = filtros.modo;
+        actualizarAyudaModo();
+        renderChipsFiltros();
+
+        const advertencias = datos.advertencias || [];
+        if (advertencias.length) {
+            mostrarAdvertencia(advertencias.join(' '));
+            mostrarToast('Filtros guardados con advertencias.');
+        } else {
+            mostrarToast('Filtros guardados.');
+            cerrarModalFiltros();
+        }
+    } catch (error) {
+        mostrarAdvertencia(error.message);
+        mostrarToast(error.message);
+    } finally {
+        el.btnGuardarFiltros.disabled = false;
+    }
+}
+
+function conectarAgregar(boton, input, campo) {
+    const agregar = () => {
+        if (!estadoApp.filtrosEditados) return;
+        agregarValoresFiltro(campo, input.value);
+        input.value = '';
+        input.focus();
+    };
+
+    boton.addEventListener('click', agregar);
+    input.addEventListener('keydown', evento => {
+        if (evento.key === 'Enter') {
+            evento.preventDefault();
+            agregar();
+        }
+    });
+}
+
+function initModalFiltros() {
+    el.btnEditarFiltros.addEventListener('click', abrirModalFiltros);
+    el.btnCerrarFiltros.addEventListener('click', cerrarModalFiltros);
+    el.btnCancelarFiltros.addEventListener('click', cerrarModalFiltros);
+    el.btnGuardarFiltros.addEventListener('click', guardarFiltros);
+
+    for (const cerrar of el.modalFiltros.querySelectorAll('[data-cerrar-filtros]')) {
+        cerrar.addEventListener('click', cerrarModalFiltros);
+    }
+
+    document.addEventListener('keydown', evento => {
+        if (evento.key === 'Escape' && !el.modalFiltros.classList.contains('hidden')) {
+            cerrarModalFiltros();
+        }
+    });
+
+    el.filtroModo.addEventListener('change', () => {
+        if (estadoApp.filtrosEditados) estadoApp.filtrosEditados.modo = el.filtroModo.value;
+        actualizarAyudaModo();
+    });
+
+    for (const tab of el.modalFiltros.querySelectorAll('.modal-tab')) {
+        tab.addEventListener('click', () => activarTabModal(tab.dataset.filtroTab));
+    }
+
+    conectarAgregar(el.btnAgregarNumeroPermitido, el.inputNumeroPermitido, 'numerosPermitidos');
+    conectarAgregar(el.btnAgregarNumeroBloqueado, el.inputNumeroBloqueado, 'numerosBloqueados');
+    conectarAgregar(el.btnAgregarGrupoPermitido, el.inputGrupoPermitido, 'gruposPermitidos');
+    conectarAgregar(el.btnAgregarGrupoBloqueado, el.inputGrupoBloqueado, 'gruposBloqueados');
 }
 
 function aplicarEstado(datos) {
@@ -524,6 +824,7 @@ function debounce(fn, ms) {
 function init() {
     initTabs();
     initAcciones();
+    initModalFiltros();
 
     cargarEstado().catch(() => setBadge('error', 'No se pudo conectar con el servicio'));
     cargarComprobantes().catch(() => {});
