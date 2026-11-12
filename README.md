@@ -1,16 +1,18 @@
 # CXC_whatsapp_Scrapear
 
 Bot de WhatsApp que descarga imágenes y PDFs, convierte las imágenes a PDF y los guarda
-renombrados con el caption del mensaje.
+organizados por grupo o chat, con el remitente y el caption del mensaje en el nombre.
 
 ## Qué hace
 
 - Escucha mensajes de WhatsApp con `whatsapp-web.js` y `LocalAuth`.
 - Descarga **imágenes** (`image/*`) y **PDFs** (`application/pdf`).
 - Convierte cualquier imagen a PDF.
-- Renombra el archivo con el **caption del mismo mensaje**.
-- Guarda todo en `comprobantes/YYYY-MM-DD/` como PDF, usando la fecha del mensaje.
-- Si no hay caption, usa `comprobante_<timestamp>.pdf`.
+- Renombra el archivo como `<remitente> - <caption>.pdf`.
+- Guarda todo en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/`, usando la fecha del mensaje.
+- Los grupos usan su nombre; si hay nombres repetidos, agrega los últimos 6 dígitos del ID.
+- Los chats privados usan el nombre del contacto o su número.
+- Si no hay caption, usa `<remitente>.pdf`; sin remitente, `comprobante_<timestamp>.pdf`.
 - Si el nombre ya existe, agrega `_2`, `_3`, etc.
 - Ignora mensajes de texto, stickers, audios, videos y reacciones.
 
@@ -24,7 +26,7 @@ El servicio levanta un panel en `http://127.0.0.1:3001` (se puede cambiar con
 - Estado de la conexión y cuenta de WhatsApp.
 - Código QR cuando hace falta vincular el dispositivo.
 - Filtros activos editables (modo, números y grupos) sin tocar `.env`.
-- Registros en vivo y comprobantes por fecha.
+- Registros en vivo y comprobantes por fecha, grupo o chat.
 - Botones para reiniciar el servicio (bajo PM2) y abrir la carpeta de comprobantes.
 
 El panel solo escucha en `127.0.0.1`; no se expone a la red local. Los filtros guardados
@@ -105,7 +107,9 @@ FILTRO_MODO=todos
 ```bash
 node scripts/probar-archivos.js /ruta/a/imagen.jpg "Nombre del cliente"
 node scripts/probar-archivos.js /ruta/a/comprobante.pdf "Nombre del cliente"
+node scripts/probar-archivos.js /ruta/a/comprobante.pdf "Hotel Haba" application/pdf "Pagos choferes" "omar"
 ```
 
-Los PDFs generados quedan en `comprobantes/YYYY-MM-DD/`, usando la fecha del mensaje en la
-zona horaria local.
+Los PDFs generados quedan en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/`, usando la fecha del
+mensaje en la zona horaria local. Si no se pasa grupo ni remitente, se guarda en la raíz de
+la fecha como antes.

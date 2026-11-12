@@ -3,8 +3,47 @@
  * Utilidades para generar el nombre del archivo final.
  */
 
-const MAX_NOMBRE_BASE = 120;
+const MAX_NOMBRE_BASE = 100;
+const MAX_CARPETA_BASE = 80;
 const NOMBRES_RESERVADOS_WINDOWS = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+
+function normalizarParaComparar(valor) {
+    return String(valor || '')
+        .normalize('NFKC')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('es-MX')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function sanitizarNombreBase(nombre, maximo) {
+    let valor = typeof nombre === 'string' ? nombre : '';
+
+    valor = valor
+        .replace(/[\x00-\x1F<>:"/\\|?*%]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/[. ]+$/g, '');
+
+    if (NOMBRES_RESERVADOS_WINDOWS.test(valor)) {
+        valor = `_${valor}`;
+    }
+
+    if (Array.from(valor).length > maximo) {
+        valor = Array.from(valor)
+            .slice(0, maximo)
+            .join('')
+            .trim()
+            .replace(/[. ]+$/g, '');
+    }
+
+    if (!valor || valor === '.' || valor === '..') {
+        return '';
+    }
+
+    return valor;
+}
 
 /**
  * Genera el nombre sanitizado del archivo PDF final.
@@ -15,36 +54,37 @@ const NOMBRES_RESERVADOS_WINDOWS = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$
  * @returns {string} Nombre del archivo con extensión .pdf
  */
 function generarNombreArchivo(nombreCliente) {
-    let nombre = typeof nombreCliente === 'string' ? nombreCliente : '';
-
-    // Caracteres inválidos en Windows, caracteres de control y espacios repetidos
-    nombre = nombre
-        .replace(/[\x00-\x1F<>:"/\\|?*%]/g, '-')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/[. ]+$/g, '');
-
-    // Windows no permite nombres de dispositivo como CON, PRN, AUX, NUL, COM1-9 o LPT1-9
-    if (NOMBRES_RESERVADOS_WINDOWS.test(nombre)) {
-        nombre = `_${nombre}`;
-    }
-
-    // Evitar rutas demasiado largas en Windows (MAX_PATH), sin cortar emojis
-    if (Array.from(nombre).length > MAX_NOMBRE_BASE) {
-        nombre = Array.from(nombre)
-            .slice(0, MAX_NOMBRE_BASE)
-            .join('')
-            .trim()
-            .replace(/[. ]+$/g, '');
-    }
-
-    if (!nombre || nombre === '.' || nombre === '..') {
-        nombre = `comprobante_${Date.now()}`;
-    }
+    const nombre = sanitizarNombreBase(nombreCliente, MAX_NOMBRE_BASE) ||
+        `comprobante_${Date.now()}`;
 
     return `${nombre}.pdf`;
 }
 
+function sanitizarNombreCarpeta(nombre) {
+    return sanitizarNombreBase(nombre, MAX_CARPETA_BASE);
+}
+
+function generarNombreComprobante(caption, remitente) {
+    const cap = typeof caption === 'string'
+        ? caption.trim().replace(/\.pdf$/i, '').trim()
+        : '';
+    const rem = typeof remitente === 'string' ? remitente.trim() : '';
+
+    if (rem && cap) {
+        const capNormalizado = normalizarParaComparar(cap);
+        const remNormalizado = normalizarParaComparar(rem);
+        if (remNormalizado && capNormalizado.startsWith(remNormalizado)) {
+            return generarNombreArchivo(cap);
+        }
+        return generarNombreArchivo(`${rem} - ${cap}`);
+    }
+
+    return generarNombreArchivo(rem || cap || null);
+}
+
 module.exports = {
-    generarNombreArchivo
+    generarNombreArchivo,
+    generarNombreComprobante,
+    sanitizarNombreCarpeta,
+    MAX_CARPETA_BASE
 };

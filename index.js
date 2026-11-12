@@ -8,6 +8,7 @@ const qrcode = require('qrcode-terminal');
 const { procesarMedia } = require('./mediaHandler'); // 2. Importar el orquestador
 const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
+const { resolverCarpetaChat } = require('./services/carpetas');
 const { estado, actualizarEstado, eventos } = require('./services/estado');
 const { iniciarPanel } = require('./panel/server');
 const { cargarConfig, configDesdeEntorno } = require('./services/configFiltros');
@@ -41,6 +42,23 @@ async function mensajeConIdentidadTelefonica(msg) {
         console.warn(`[index] No se pudo resolver el contacto ${identidad}:`, error.message || error);
         return msg;
     }
+}
+
+async function resolverNombreRemitente(msg, identidadFallback) {
+    const id = msg.author || msg.from || identidadFallback || '';
+
+    try {
+        if (typeof msg.getContact === 'function') {
+            const contacto = await msg.getContact();
+            const nombre = String(contacto?.name || contacto?.pushname || '').trim();
+            if (nombre) return nombre;
+        }
+    } catch (error) {
+        console.warn(`[index] No se pudo resolver el remitente ${id}:`, error.message || error);
+    }
+
+    const numero = String(identidadFallback || id).split('@')[0];
+    return numero || 'Sin nombre';
 }
 
 const configGuardada = cargarConfig();
@@ -353,21 +371,39 @@ client.on('message_create', async (msg) => {
             return;
         }
 
+        const identidadRemitente = mensajeParaFiltro.author || mensajeParaFiltro.from || remitente;
+        const nombreRemitente = await resolverNombreRemitente(msg, identidadRemitente);
+        const carpetaChat = resolverCarpetaChat({
+            groupId: mensajeParaFiltro.groupId,
+            groupName: mensajeParaFiltro.groupName,
+            remitente: nombreRemitente,
+            from: mensajeParaFiltro.from || msg.from,
+            gruposPorId: client.__gruposPorId
+        });
+
         console.log(`\n${'='.repeat(60)}`);
-        console.log(`[+] Comprobante recibido de: ${remitente}`);
+        console.log(`[+] Comprobante recibido de: ${nombreRemitente} (${identidadRemitente})`);
+        console.log(`    Grupo/Chat: ${carpetaChat}`);
         console.log(`    Tipo: ${msg.type} (${mimetype})`);
         console.log(`    Nombre (caption): "${nombreDesdeCaption || '(vacío)'}"`);
         console.log(`${'='.repeat(60)}`);
 
         const fechaRecepcion = msg.timestamp ? new Date(msg.timestamp * 1000) : undefined;
-        const resultado = await procesarMedia(media, nombreDesdeCaption || null, { fechaRecepcion });
+        const resultado = await procesarMedia(media, nombreDesdeCaption || null, {
+            fechaRecepcion,
+            grupo: carpetaChat,
+            remitente: nombreRemitente
+        });
 
         if (resultado.exito) {
-            console.log(`[index] Archivo almacenado: ${resultado.ruta}`);
+            const etiqueta = resultado.rutaRelativa || resultado.ruta;
+            console.log(`[index] Archivo almacenado: ${etiqueta}`);
             eventos.emit('archivo', {
                 fecha: resultado.fechaRecepcion,
                 nombre: resultado.nombreArchivo,
-                ruta: resultado.ruta
+                ruta: resultado.ruta,
+                grupo: resultado.grupo,
+                remitente: resultado.remitente
             });
         } else if (resultado.rutaUsada !== 'ignorado') {
             console.warn(`[index] No se pudo almacenar el archivo de ${remitente}`);

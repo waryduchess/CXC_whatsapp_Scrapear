@@ -5,7 +5,7 @@
  * Uso:
  *   node scripts/probar-archivos.js                      # Escanea imagenes_recibidas/
  *   node scripts/probar-archivos.js <ruta> <cliente>     # Un archivo específico
- *   node scripts/probar-archivos.js <ruta> <cliente> <mimetype>
+ *   node scripts/probar-archivos.js <ruta> <cliente> <mimetype> [grupo] [remitente]
  */
 
 require('dotenv').config();
@@ -30,7 +30,7 @@ function inferirMimetype(archivo) {
     }
 }
 
-async function procesarCaso(descripcion, archivo, mimetype, cliente) {
+async function procesarCaso(descripcion, archivo, mimetype, cliente, grupo, remitente) {
     const rutaArchivo = path.resolve(archivo);
 
     console.log(`\n>>> ${descripcion}`);
@@ -56,13 +56,16 @@ async function procesarCaso(descripcion, archivo, mimetype, cliente) {
     };
 
     const inicio = Date.now();
-    const resultado = await procesarMedia(mediaSimulada, cliente);
+    const resultado = await procesarMedia(mediaSimulada, cliente, { grupo, remitente });
     const duracion = ((Date.now() - inicio) / 1000).toFixed(2);
 
     console.log(`    Resultado:`);
     console.log(`      - Éxito: ${resultado.exito ? 'SÍ' : 'NO'}`);
     console.log(`      - Ruta usada: ${resultado.rutaUsada}`);
+    console.log(`      - Grupo/Chat: ${resultado.grupo || '(raíz de fecha)'}`);
+    console.log(`      - Remitente: ${resultado.remitente || '(sin remitente)'}`);
     console.log(`      - Archivo generado: ${resultado.nombreArchivo}`);
+    console.log(`      - Ruta relativa: ${resultado.rutaRelativa || resultado.ruta}`);
     console.log(`      - Tiempo: ${duracion}s`);
 }
 
@@ -76,9 +79,9 @@ async function ejecutarPruebas() {
 
     if (args.length >= 1) {
         // Caso por línea de comandos: <ruta> [cliente] [mimetype]
-        const [archivo, cliente = 'Cliente CLI', mimetype] = args;
+        const [archivo, cliente = 'Cliente CLI', mimetype, grupo, remitente] = args;
         const descripcion = `CASO CLI: ${path.basename(archivo)}`;
-        await procesarCaso(descripcion, archivo, mimetype, cliente);
+        await procesarCaso(descripcion, archivo, mimetype, cliente, grupo, remitente);
     } else {
         // Escanear imagenes_recibidas/ y procesar lo que exista
         const dir = path.join(__dirname, '..', 'imagenes_recibidas');
@@ -112,7 +115,7 @@ async function ejecutarPruebas() {
 
     console.log('\n' + '='.repeat(70));
     console.log(' PRUEBAS FINALIZADAS');
-    console.log(' Revisa la carpeta "comprobantes/YYYY-MM-DD/" para ver los PDFs finales generados.');
+    console.log(' Revisa la carpeta "comprobantes/YYYY-MM-DD/[Grupo o Chat]/" para ver los PDFs finales generados.');
     console.log('='.repeat(70));
 }
 

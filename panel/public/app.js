@@ -516,8 +516,9 @@ async function cargarEstado() {
 function actualizarUltimo(ultimo) {
     estadoApp.ultimo = ultimo;
     if (ultimo) {
-        el.kpiUltimo.textContent = `${ultimo.nombre} (${ultimo.fecha})`;
-        el.kpiUltimo.title = ultimo.nombre;
+        const etiqueta = ultimo.grupo ? `${ultimo.grupo}/${ultimo.nombre}` : ultimo.nombre;
+        el.kpiUltimo.textContent = `${etiqueta} (${ultimo.fecha})`;
+        el.kpiUltimo.title = etiqueta;
     } else {
         el.kpiUltimo.textContent = '-';
         el.kpiUltimo.title = '';
@@ -576,7 +577,8 @@ function archivosFiltrados() {
             !estadoApp.fechasSeleccionadas.has(archivo.fecha)) {
             return false;
         }
-        if (busqueda && !normalizar(archivo.nombre).includes(busqueda)) {
+        const texto = normalizar(`${archivo.grupo || ''} ${archivo.nombre}`);
+        if (busqueda && !texto.includes(busqueda)) {
             return false;
         }
         return true;
@@ -596,7 +598,7 @@ function renderArchivos() {
     if (pagina.length === 0) {
         const fila = document.createElement('tr');
         const celda = document.createElement('td');
-        celda.colSpan = 5;
+        celda.colSpan = 6;
         celda.className = 'vacio';
         celda.textContent = 'No hay comprobantes que coincidan.';
         fila.append(celda);
@@ -609,6 +611,11 @@ function renderArchivos() {
             nombre.className = 'nombre';
             nombre.textContent = archivo.nombre;
             nombre.title = archivo.nombre;
+
+            const grupo = document.createElement('td');
+            grupo.className = 'grupo';
+            grupo.textContent = archivo.grupo || 'Sin grupo';
+            grupo.title = archivo.grupo || '';
 
             const fecha = document.createElement('td');
             fecha.textContent = archivo.fecha;
@@ -623,11 +630,14 @@ function renderArchivos() {
             const enlace = document.createElement('a');
             enlace.className = 'btn btn-small';
             enlace.textContent = 'Descargar';
-            enlace.href = `/api/comprobantes/${encodeURIComponent(archivo.fecha)}/${encodeURIComponent(archivo.nombre)}`;
+            const base = `/api/comprobantes/${encodeURIComponent(archivo.fecha)}`;
+            enlace.href = archivo.grupo
+                ? `${base}/${encodeURIComponent(archivo.grupo)}/${encodeURIComponent(archivo.nombre)}`
+                : `${base}/${encodeURIComponent(archivo.nombre)}`;
             enlace.download = archivo.nombre;
             acciones.append(enlace);
 
-            fila.append(nombre, fecha, tamano, modificado, acciones);
+            fila.append(nombre, grupo, fecha, tamano, modificado, acciones);
             el.tablaArchivos.append(fila);
         }
     }
@@ -673,7 +683,8 @@ async function cargarLogs() {
 }
 
 function manejarArchivoNuevo(archivo) {
-    mostrarToast(`Nuevo comprobante: ${archivo.nombre}`);
+    const etiqueta = archivo.grupo ? `${archivo.grupo}/${archivo.nombre}` : archivo.nombre;
+    mostrarToast(`Nuevo comprobante: ${etiqueta}`);
     cargarComprobantes().catch(() => {});
 }
 

@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { imagenAPdf } = require('./services/pdfService');
-const { generarNombreArchivo } = require('./utils/validators');
+const { generarNombreComprobante, sanitizarNombreCarpeta } = require('./utils/validators');
 
 // Carpeta de salida — todo se guarda como PDF
 const COMPROBANTES_DIR = path.join(__dirname, 'comprobantes');
@@ -97,8 +97,8 @@ async function prepararComprobante(media) {
  *
  * @param {Object} preparado - Objeto retornado por prepararComprobante
  * @param {string|null} nombreCliente - Nombre tomado del caption del mensaje
- * @param {{ fechaRecepcion?: number|Date }} [opciones] - Fecha del mensaje; por defecto, ahora
- * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string, fechaRecepcion: string }>}
+ * @param {{ fechaRecepcion?: number|Date, grupo?: string, remitente?: string }} [opciones] - Fecha, grupo/chat y remitente
+ * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaRelativa?: string, rutaUsada: string, fechaRecepcion: string, grupo: string|null, remitente: string|null }>}
  */
 async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
     const { bufferPdf, rutaUsada } = preparado;
@@ -109,31 +109,43 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
     const fechaRecepcion = Number.isNaN(fechaRecibida.getTime()) ? new Date() : fechaRecibida;
     const fechaRecepcionStr = formatearFechaLocal(fechaRecepcion);
 
+    const grupo = typeof opciones.grupo === 'string' ? opciones.grupo.trim() : '';
+    const remitente = typeof opciones.remitente === 'string' ? opciones.remitente.trim() : '';
+    const carpetaGrupo = grupo ? sanitizarNombreCarpeta(grupo) : '';
+    const grupoFinal = carpetaGrupo || null;
+
     if (rutaUsada === 'ignorado' || !bufferPdf) {
         return {
             exito: false,
             nombreArchivo: null,
             ruta: null,
             rutaUsada: rutaUsada || 'ignorado',
-            fechaRecepcion: fechaRecepcionStr
+            fechaRecepcion: fechaRecepcionStr,
+            grupo: grupoFinal,
+            remitente: remitente || null
         };
     }
 
     const carpetaDia = path.join(COMPROBANTES_DIR, fechaRecepcionStr);
+    const carpetaDestino = carpetaGrupo ? path.join(carpetaDia, carpetaGrupo) : carpetaDia;
 
     try {
-        fs.mkdirSync(carpetaDia, { recursive: true });
+        fs.mkdirSync(carpetaDestino, { recursive: true });
 
-        const nombreBase = generarNombreArchivo(nombreCliente);
-        const { nombreArchivo, ruta: rutaArchivo } = guardarArchivoUnico(carpetaDia, nombreBase, bufferPdf);
-        console.log(`[mediaHandler] Guardado: ${fechaRecepcionStr}/${nombreArchivo} (ruta: ${rutaUsada})`);
+        const nombreBase = generarNombreComprobante(nombreCliente, remitente);
+        const { nombreArchivo, ruta: rutaArchivo } = guardarArchivoUnico(carpetaDestino, nombreBase, bufferPdf);
+        const rutaRelativa = [fechaRecepcionStr, carpetaGrupo, nombreArchivo].filter(Boolean).join('/');
+        console.log(`[mediaHandler] Guardado: ${rutaRelativa} (ruta: ${rutaUsada})`);
 
         return {
             exito: true,
             nombreArchivo,
             ruta: rutaArchivo,
+            rutaRelativa,
             rutaUsada,
-            fechaRecepcion: fechaRecepcionStr
+            fechaRecepcion: fechaRecepcionStr,
+            grupo: grupoFinal,
+            remitente: remitente || null
         };
     } catch (saveError) {
         console.error('[mediaHandler] Error al guardar archivo final:', saveError.message);
@@ -142,7 +154,9 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
             nombreArchivo: null,
             ruta: null,
             rutaUsada,
-            fechaRecepcion: fechaRecepcionStr
+            fechaRecepcion: fechaRecepcionStr,
+            grupo: grupoFinal,
+            remitente: remitente || null
         };
     }
 }
@@ -152,8 +166,8 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
  *
  * @param {Object} media - Objeto de media de whatsapp-web.js (con .data y .mimetype)
  * @param {string|null} nombreCliente - Nombre tomado del caption del mensaje
- * @param {{ fechaRecepcion?: number|Date }} [opciones] - Fecha del mensaje; por defecto, ahora
- * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string, fechaRecepcion: string }>}
+ * @param {{ fechaRecepcion?: number|Date, grupo?: string, remitente?: string }} [opciones] - Fecha, grupo/chat y remitente
+ * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaRelativa?: string, rutaUsada: string, fechaRecepcion: string, grupo: string|null, remitente: string|null }>}
  */
 async function procesarMedia(media, nombreCliente, opciones = {}) {
     const preparado = await prepararComprobante(media);

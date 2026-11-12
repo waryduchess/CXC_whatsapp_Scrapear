@@ -5,6 +5,18 @@
  * Acepta IDs @g.us o nombres visibles configurados en las listas.
  */
 
+function normalizarNombreGrupo(nombre) {
+    if (typeof nombre !== 'string') return '';
+
+    return nombre
+        .normalize('NFKC')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('es-MX')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
 class FiltroGrupos {
     constructor(gruposPermitidos = [], gruposBloqueados = []) {
         this.gruposPermitidos = new Set(gruposPermitidos);
@@ -18,15 +30,7 @@ class FiltroGrupos {
     }
 
     normalizarNombre(nombre) {
-        if (typeof nombre !== 'string') return '';
-
-        return nombre
-            .normalize('NFKC')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLocaleLowerCase('es-MX')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
+        return normalizarNombreGrupo(nombre);
     }
 
     registrarNombre(chatId, nombre) {
@@ -137,12 +141,16 @@ async function resolverNombreGrupo(msg) {
                 });
             }
         }
-        if (!chat?.name) {
+        const nombreGrupo = chat?.name || chat?.formattedTitle;
+        if (!nombreGrupo) {
             console.warn(`[filtroGrupos] No se encontró nombre para ${grupoId}; usa el ID o revisa los grupos cargados.`);
         } else {
-            console.log(`[filtroGrupos] Grupo detectado: ${grupoId} → "${chat.name}"`);
+            console.log(`[filtroGrupos] Grupo detectado: ${grupoId} → "${nombreGrupo}"`);
         }
-        return { ...msg, groupId: grupoId, groupName: chat?.name };
+        if (chat && msg.client?.__gruposPorId) {
+            msg.client.__gruposPorId.set(grupoId, chat);
+        }
+        return { ...msg, groupId: grupoId, groupName: nombreGrupo };
     } catch (error) {
         console.warn(`[filtroGrupos] No se pudo resolver el grupo ${grupoId}:`, error.message || error);
         // El ID sigue siendo confiable aunque WhatsApp no entregue el nombre.
@@ -153,5 +161,6 @@ async function resolverNombreGrupo(msg) {
 module.exports = {
     FiltroGrupos,
     obtenerGruposBasicos,
-    resolverNombreGrupo
+    resolverNombreGrupo,
+    normalizarNombreGrupo
 };

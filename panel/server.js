@@ -150,23 +150,52 @@ function listarFechas() {
 function listarArchivos(fecha) {
     const carpeta = path.join(COMPROBANTES_DIR, fecha);
     try {
-        return fs.readdirSync(carpeta, { withFileTypes: true })
-            .filter(entrada => entrada.isFile() && RE_ARCHIVO.test(entrada.name))
-            .map(entrada => {
-                try {
-                    const info = fs.statSync(path.join(carpeta, entrada.name));
-                    return {
-                        fecha,
-                        nombre: entrada.name,
-                        tamano: info.size,
-                        mtime: info.mtimeMs
-                    };
-                } catch (error) {
-                    return null;
+        const entradas = fs.readdirSync(carpeta, { withFileTypes: true });
+        const archivos = [];
+
+        const agregar = (grupo, directorio, nombre) => {
+            try {
+                const info = fs.statSync(path.join(directorio, nombre));
+                archivos.push({
+                    fecha,
+                    grupo,
+                    nombre,
+                    tamano: info.size,
+                    mtime: info.mtimeMs
+                });
+            } catch (error) {
+                return;
+            }
+        };
+
+        for (const entrada of entradas) {
+            if (entrada.name.startsWith('.')) continue;
+
+            if (entrada.isFile() && RE_ARCHIVO.test(entrada.name)) {
+                agregar(null, carpeta, entrada.name);
+                continue;
+            }
+
+            if (!entrada.isDirectory()) continue;
+
+            const subcarpeta = path.join(carpeta, entrada.name);
+            let subentradas;
+            try {
+                subentradas = fs.readdirSync(subcarpeta, { withFileTypes: true });
+            } catch (error) {
+                if (error.code !== 'ENOENT') {
+                    console.error(`[panel] No se pudo leer la carpeta ${entrada.name}:`, error.message || error);
                 }
-            })
-            .filter(Boolean)
-            .sort((a, b) => b.mtime - a.mtime);
+                continue;
+            }
+
+            for (const subentrada of subentradas) {
+                if (!subentrada.isFile() || !RE_ARCHIVO.test(subentrada.name)) continue;
+                agregar(entrada.name, subcarpeta, subentrada.name);
+            }
+        }
+
+        return archivos.sort((a, b) => b.mtime - a.mtime);
     } catch (error) {
         if (error.code !== 'ENOENT') {
             console.error(`[panel] No se pudo leer la fecha ${fecha}:`, error.message || error);
@@ -185,25 +214,38 @@ function listarTodo() {
     return { fechas, archivos, ultimo: archivos[0] || null };
 }
 
-function resolverArchivo(fecha, nombreCodificado) {
-    if (!RE_FECHA.test(fecha)) return null;
-
-    let nombre;
+function decodificarSegmento(valor) {
     try {
-        nombre = decodeURIComponent(nombreCodificado);
+        const decodificado = decodeURIComponent(valor);
+        if (!decodificado || decodificado === '.' || decodificado === '..' ||
+            decodificado.includes('/') || decodificado.includes('\\') ||
+            decodificado.includes('\0')) {
+            return null;
+        }
+        return decodificado;
     } catch (error) {
         return null;
     }
+}
 
-    if (!nombre || nombre === '.' || nombre === '..' ||
-        nombre.includes('/') || nombre.includes('\\') || nombre.includes('\0') ||
-        !RE_ARCHIVO.test(nombre)) {
-        return null;
+function resolverArchivo(fecha, grupoCodificado, nombreCodificado) {
+    if (!RE_FECHA.test(fecha)) return null;
+
+    const nombre = decodificarSegmento(nombreCodificado);
+    if (!nombre || !RE_ARCHIVO.test(nombre)) return null;
+
+    const carpetaFecha = path.resolve(COMPROBANTES_DIR, fecha);
+    let carpetaDestino = carpetaFecha;
+
+    if (grupoCodificado != null) {
+        const grupo = decodificarSegmento(grupoCodificado);
+        if (!grupo) return null;
+        carpetaDestino = path.resolve(carpetaFecha, grupo);
+        if (!carpetaDestino.startsWith(carpetaFecha + path.sep)) return null;
     }
 
-    const carpeta = path.resolve(COMPROBANTES_DIR, fecha);
-    const ruta = path.resolve(carpeta, nombre);
-    if (ruta !== path.join(carpeta, nombre) || !ruta.startsWith(carpeta + path.sep)) {
+    const ruta = path.resolve(carpetaDestino, nombre);
+    if (ruta !== path.join(carpetaDestino, nombre) || !ruta.startsWith(carpetaDestino + path.sep)) {
         return null;
     }
 
@@ -448,11 +490,14 @@ async function manejarApi(req, res, url, puerto, opciones) {
 
     if (pathname.startsWith('/api/comprobantes/') && req.method === 'GET') {
         const partes = pathname.split('/').filter(Boolean);
-        if (partes.length !== 4) {
+        if (partes.length !== 4 && partes.length !== 5) {
             return responderJson(res, 404, { ok: false, error: 'No encontrado' });
         }
 
-        const ruta = resolverArchivo(partes[2], partes[3]);
+        const fecha = partes[2];
+        const grupo = partes.length === 5 ? partes[3] : null;
+        const nombre = partes.length === 5 ? partes[4] : partes[3];
+        const ruta = resolverArchivo(fecha, grupo, nombre);
         if (!ruta) {
             return responderJson(res, 400, { ok: false, error: 'Archivo inválido' });
         }
