@@ -1,6 +1,7 @@
 require('dotenv').config(); // 1. Cargar variables de entorno PRIMERO
 const { instalarLogger } = require('./services/logger');
 instalarLogger();
+const fs = require('fs');
 const QRCode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -20,7 +21,7 @@ async function mensajeConIdentidadTelefonica(msg) {
 
     try {
         const contacto = await msg.getContact();
-        const id = contacto?.id?._serialized || contacto?.id?.$1;
+        const id = contacto?.id?._serialized;
         const numero = contacto?.number;
         const identidadReal = id?.endsWith('@c.us') ? id : numero ? `${numero}@c.us` : null;
 
@@ -41,16 +42,35 @@ async function mensajeConIdentidadTelefonica(msg) {
         return msg;
     }
 }
+
 const configGuardada = cargarConfig();
 const configInicial = configGuardada || configDesdeEntorno();
 filtroMensajes.reemplazarConfiguracion(configInicial);
 console.log(`[config] Filtros cargados desde ${configGuardada ? 'config/filtros.json' : '.env'}`);
+
+function resolverEjecutableNavegador() {
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const candidatos = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+    ];
+    const encontrado = candidatos.find((ruta) => fs.existsSync(ruta));
+    if (encontrado) {
+        console.log(`[puppeteer] Usando navegador del sistema: ${encontrado}`);
+    }
+    return encontrado;
+}
 
 const client = new Client({
     authStrategy: new LocalAuth(),
     authTimeoutMs: 120000,
     puppeteer: {
         headless: true,
+        executablePath: resolverEjecutableNavegador(),
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -80,6 +100,7 @@ let qrSecuencia = 0;
 let reiniciando = false;
 let saliendo = false;
 let watchdog = null;
+let listenerNavegadorActivo = false;
 
 async function cerrarCliente() {
     try {
@@ -108,12 +129,13 @@ function cerrarServicio(motivo, codigo = 1) {
 }
 
 function iniciarWatchdog() {
-    if (watchdog) return;
-
     const navegador = client.pupBrowser;
-    if (navegador) {
+    if (navegador && !listenerNavegadorActivo) {
+        listenerNavegadorActivo = true;
         navegador.on('disconnected', () => cerrarServicio('Chromium se desconectó'));
     }
+
+    if (watchdog) return;
 
     watchdog = setInterval(() => {
         try {
@@ -156,6 +178,16 @@ process.on('SIGTERM', () => {
     actualizarEstado({ fase: 'reiniciando', detalle: 'Deteniendo servicio...' });
     console.log('[proceso] Cerrando por SIGTERM...');
     cerrarCliente().finally(() => process.exit(0));
+});
+
+process.on('message', (msg) => {
+    if (msg === 'shutdown') {
+        if (saliendo) return;
+        saliendo = true;
+        actualizarEstado({ fase: 'reiniciando', detalle: 'Deteniendo servicio...' });
+        console.log('[proceso] Cerrando por señal de PM2...');
+        cerrarCliente().finally(() => process.exit(0));
+    }
 });
 
 client.on('loading_screen', (percent, message) => {
@@ -267,7 +299,7 @@ client.on('ready', async () => {
         client.__gruposPorId = new Map(
             chats
                 .map(chat => [
-                    chat.id?._serialized || chat.id?.$1 || chat.id?.toString?.() || chat.id,
+                    chat.id?._serialized || chat.id?.toString?.() || chat.id,
                     chat
                 ])
                 .filter(([id]) => typeof id === 'string' && id.endsWith('@g.us'))
@@ -346,6 +378,7 @@ client.on('message_create', async (msg) => {
 });
 
 iniciarPanel({
+    obtenerGrupos: obtenerGruposPanel,
     onReiniciar: async () => {
         reiniciando = true;
         actualizarEstado({ fase: 'reiniciando', detalle: 'Reiniciando servicio...' });
