@@ -41,7 +41,6 @@ async function mensajeConIdentidadTelefonica(msg) {
         return msg;
     }
 }
-
 const configGuardada = cargarConfig();
 const configInicial = configGuardada || configDesdeEntorno();
 filtroMensajes.reemplazarConfiguracion(configInicial);
@@ -347,7 +346,6 @@ client.on('message_create', async (msg) => {
 });
 
 iniciarPanel({
-    obtenerGrupos: obtenerGruposPanel,
     onReiniciar: async () => {
         reiniciando = true;
         actualizarEstado({ fase: 'reiniciando', detalle: 'Reiniciando servicio...' });
