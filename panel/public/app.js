@@ -4,12 +4,22 @@ const estadoApp = {
     archivos: [],
     ultimo: null,
     fechasSeleccionadas: new Set(),
+    chatsSeleccionados: new Set(),
     busqueda: '',
     pagina: 1,
     porPagina: 20,
     logs: [],
     busquedaLog: '',
     filtrosEditados: null
+};
+
+const estadoPdf = {
+    pdf: null,
+    token: 0,
+    zoom: 1,
+    escalaBase: 1,
+    paginaActual: 1,
+    totalPaginas: 0
 };
 
 const el = {
@@ -35,6 +45,10 @@ const el = {
     menuFechas: document.getElementById('menu-fechas'),
     fechasCount: document.getElementById('fechas-count'),
     filtroFechas: document.getElementById('filtro-fechas'),
+    btnGrupos: document.getElementById('btn-grupos'),
+    menuGrupos: document.getElementById('menu-grupos'),
+    gruposCount: document.getElementById('grupos-count'),
+    filtroGrupos: document.getElementById('filtro-grupos'),
     btnLimpiarFiltros: document.getElementById('btn-limpiar-filtros'),
     tablaArchivos: document.getElementById('tabla-archivos'),
     pagPrev: document.getElementById('pag-prev'),
@@ -64,8 +78,27 @@ const el = {
     btnAgregarGrupoPermitido: document.getElementById('btn-agregar-grupo-permitido'),
     btnAgregarGrupoBloqueado: document.getElementById('btn-agregar-grupo-bloqueado'),
     listaGrupos: document.getElementById('lista-grupos'),
+    modalPdf: document.getElementById('modal-pdf'),
+    btnCerrarPdf: document.getElementById('btn-cerrar-pdf'),
+    pdfBackdrop: document.querySelector('#modal-pdf [data-cerrar-pdf]'),
+    pdfTitulo: document.getElementById('modal-pdf-titulo'),
+    pdfSubtitulo: document.getElementById('modal-pdf-subtitulo'),
+    pdfPages: document.getElementById('pdf-pages'),
+    pdfPageInfo: document.getElementById('pdf-page-info'),
+    pdfZoomInfo: document.getElementById('pdf-zoom-info'),
+    pdfPrev: document.getElementById('pdf-prev'),
+    pdfNext: document.getElementById('pdf-next'),
+    pdfZoomOut: document.getElementById('pdf-zoom-out'),
+    pdfZoomIn: document.getElementById('pdf-zoom-in'),
+    pdfFit: document.getElementById('pdf-fit'),
+    pdfPrint: document.getElementById('pdf-print'),
+    pdfDescargar: document.getElementById('pdf-descargar'),
     toast: document.getElementById('toast')
 };
+
+if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/build/pdf.worker.min.js';
+}
 
 const MODO_AYUDA = {
     todos: 'Se procesan todos los mensajes, sin importar el remitente.',
@@ -92,6 +125,14 @@ function normalizar(texto) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase();
+}
+
+function urlArchivo(archivo, inline = false) {
+    const base = `/api/comprobantes/${encodeURIComponent(archivo.fecha)}`;
+    const ruta = archivo.grupo
+        ? `${base}/${encodeURIComponent(archivo.grupo)}/${encodeURIComponent(archivo.nombre)}`
+        : `${base}/${encodeURIComponent(archivo.nombre)}`;
+    return inline ? `${ruta}?inline=1` : ruta;
 }
 
 function formatearBytes(bytes) {
@@ -530,6 +571,28 @@ function actualizarContadorFechas() {
     el.fechasCount.textContent = total === 0 ? 'Todas' : String(total);
 }
 
+function archivosPorFecha() {
+    if (estadoApp.fechasSeleccionadas.size === 0) return estadoApp.archivos;
+    return estadoApp.archivos.filter(archivo => estadoApp.fechasSeleccionadas.has(archivo.fecha));
+}
+
+function archivosPorGrupo() {
+    if (estadoApp.chatsSeleccionados.size === 0) return estadoApp.archivos;
+    return estadoApp.archivos.filter(archivo => estadoApp.chatsSeleccionados.has(archivo.grupo || ''));
+}
+
+function podarGruposSeleccionados() {
+    const disponibles = new Set(archivosPorFecha().map(archivo => archivo.grupo || ''));
+    let eliminado = false;
+    for (const clave of [...estadoApp.chatsSeleccionados]) {
+        if (!disponibles.has(clave)) {
+            estadoApp.chatsSeleccionados.delete(clave);
+            eliminado = true;
+        }
+    }
+    return eliminado;
+}
+
 function renderMenuFechas() {
     el.menuFechas.replaceChildren();
 
@@ -542,8 +605,9 @@ function renderMenuFechas() {
         return;
     }
 
+    const archivosBase = archivosPorGrupo();
     for (const fecha of estadoApp.fechas) {
-        const cantidad = estadoApp.archivos.filter(archivo => archivo.fecha === fecha).length;
+        const cantidad = archivosBase.filter(archivo => archivo.fecha === fecha).length;
         const etiqueta = document.createElement('label');
         const casilla = document.createElement('input');
         casilla.type = 'checkbox';
@@ -554,6 +618,9 @@ function renderMenuFechas() {
             else estadoApp.fechasSeleccionadas.delete(fecha);
             estadoApp.pagina = 1;
             actualizarContadorFechas();
+            const podado = podarGruposSeleccionados();
+            if (podado) renderMenuFechas();
+            renderMenuGrupos();
             renderArchivos();
         });
 
@@ -570,11 +637,77 @@ function renderMenuFechas() {
     actualizarContadorFechas();
 }
 
+function actualizarContadorGrupos() {
+    const total = estadoApp.chatsSeleccionados.size;
+    el.gruposCount.textContent = total === 0 ? 'Todos' : String(total);
+}
+
+function renderMenuGrupos() {
+    el.menuGrupos.replaceChildren();
+
+    const grupos = new Map();
+    for (const archivo of archivosPorFecha()) {
+        const clave = archivo.grupo || '';
+        const actual = grupos.get(clave) || {
+            etiqueta: archivo.grupo || 'Sin grupo',
+            cantidad: 0
+        };
+        actual.cantidad++;
+        grupos.set(clave, actual);
+    }
+
+    if (grupos.size === 0) {
+        const vacio = document.createElement('div');
+        vacio.className = 'muted';
+        vacio.textContent = 'Sin grupos disponibles';
+        el.menuGrupos.append(vacio);
+        actualizarContadorGrupos();
+        return;
+    }
+
+    const entradas = [...grupos.entries()].sort((a, b) => {
+        if (!a[0]) return 1;
+        if (!b[0]) return -1;
+        return a[1].etiqueta.localeCompare(b[1].etiqueta, 'es');
+    });
+
+    for (const [clave, grupo] of entradas) {
+        const etiqueta = document.createElement('label');
+        const casilla = document.createElement('input');
+        casilla.type = 'checkbox';
+        casilla.value = clave;
+        casilla.checked = estadoApp.chatsSeleccionados.has(clave);
+        casilla.addEventListener('change', () => {
+            if (casilla.checked) estadoApp.chatsSeleccionados.add(clave);
+            else estadoApp.chatsSeleccionados.delete(clave);
+            estadoApp.pagina = 1;
+            actualizarContadorGrupos();
+            renderMenuFechas();
+            renderArchivos();
+        });
+
+        const texto = document.createElement('span');
+        texto.textContent = grupo.etiqueta;
+        const conteo = document.createElement('span');
+        conteo.className = 'muted';
+        conteo.textContent = `${grupo.cantidad}`;
+
+        etiqueta.append(casilla, texto, conteo);
+        el.menuGrupos.append(etiqueta);
+    }
+
+    actualizarContadorGrupos();
+}
+
 function archivosFiltrados() {
     const busqueda = normalizar(estadoApp.busqueda);
     return estadoApp.archivos.filter(archivo => {
         if (estadoApp.fechasSeleccionadas.size > 0 &&
             !estadoApp.fechasSeleccionadas.has(archivo.fecha)) {
+            return false;
+        }
+        if (estadoApp.chatsSeleccionados.size > 0 &&
+            !estadoApp.chatsSeleccionados.has(archivo.grupo || '')) {
             return false;
         }
         const texto = normalizar(`${archivo.grupo || ''} ${archivo.nombre}`);
@@ -606,6 +739,12 @@ function renderArchivos() {
     } else {
         for (const archivo of pagina) {
             const fila = document.createElement('tr');
+            fila.className = 'fila-archivo';
+            fila.title = 'Doble clic para ver el PDF';
+            fila.addEventListener('dblclick', evento => {
+                if (evento.target.closest('a, button')) return;
+                abrirPdf(archivo);
+            });
 
             const nombre = document.createElement('td');
             nombre.className = 'nombre';
@@ -627,15 +766,23 @@ function renderArchivos() {
             modificado.textContent = formatearFechaHora(archivo.mtime);
 
             const acciones = document.createElement('td');
+            const contenedorAcciones = document.createElement('span');
+            contenedorAcciones.className = 'acciones-archivo';
+
+            const ver = document.createElement('button');
+            ver.className = 'btn btn-small btn-primary';
+            ver.type = 'button';
+            ver.textContent = 'Ver';
+            ver.addEventListener('click', () => abrirPdf(archivo));
+
             const enlace = document.createElement('a');
             enlace.className = 'btn btn-small';
             enlace.textContent = 'Descargar';
-            const base = `/api/comprobantes/${encodeURIComponent(archivo.fecha)}`;
-            enlace.href = archivo.grupo
-                ? `${base}/${encodeURIComponent(archivo.grupo)}/${encodeURIComponent(archivo.nombre)}`
-                : `${base}/${encodeURIComponent(archivo.nombre)}`;
+            enlace.href = urlArchivo(archivo);
             enlace.download = archivo.nombre;
-            acciones.append(enlace);
+
+            contenedorAcciones.append(ver, enlace);
+            acciones.append(contenedorAcciones);
 
             fila.append(nombre, grupo, fecha, tamano, modificado, acciones);
             el.tablaArchivos.append(fila);
@@ -659,7 +806,10 @@ async function cargarComprobantes() {
         }
     }
 
+    podarGruposSeleccionados();
+
     renderMenuFechas();
+    renderMenuGrupos();
     renderArchivos();
 }
 
@@ -686,6 +836,197 @@ function manejarArchivoNuevo(archivo) {
     const etiqueta = archivo.grupo ? `${archivo.grupo}/${archivo.nombre}` : archivo.nombre;
     mostrarToast(`Nuevo comprobante: ${etiqueta}`);
     cargarComprobantes().catch(() => {});
+}
+
+async function abrirPdf(archivo) {
+    const token = ++estadoPdf.token;
+    estadoPdf.paginaActual = 1;
+    estadoPdf.totalPaginas = 0;
+    estadoPdf.zoom = 1;
+
+    el.pdfTitulo.textContent = archivo.nombre;
+    el.pdfSubtitulo.textContent = `${archivo.grupo || 'Sin grupo'} · ${archivo.fecha}`;
+    el.pdfDescargar.href = urlArchivo(archivo);
+    el.pdfDescargar.download = archivo.nombre;
+    el.pdfPageInfo.textContent = '- / -';
+    el.pdfZoomInfo.textContent = '100%';
+    el.pdfPrev.disabled = true;
+    el.pdfNext.disabled = true;
+    el.pdfPages.replaceChildren();
+
+    const cargando = document.createElement('p');
+    cargando.className = 'muted';
+    cargando.textContent = 'Cargando PDF...';
+    el.pdfPages.append(cargando);
+
+    el.modalPdf.classList.remove('hidden');
+
+    try {
+        if (!window.pdfjsLib) {
+            throw new Error('El visor PDF no está disponible. Ejecuta npm install y reinicia el servicio.');
+        }
+
+        const respuesta = await fetch(urlArchivo(archivo));
+        if (!respuesta.ok) {
+            throw new Error(`No se pudo cargar el PDF (${respuesta.status})`);
+        }
+        const datos = await respuesta.arrayBuffer();
+        if (token !== estadoPdf.token) return;
+
+        const pdf = await window.pdfjsLib.getDocument({
+            data: datos,
+            cMapUrl: '/vendor/pdfjs/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: '/vendor/pdfjs/standard_fonts/'
+        }).promise;
+
+        if (token !== estadoPdf.token) {
+            pdf.destroy();
+            return;
+        }
+
+        if (estadoPdf.pdf) {
+            estadoPdf.pdf.destroy().catch(() => {});
+        }
+
+        estadoPdf.pdf = pdf;
+        estadoPdf.totalPaginas = pdf.numPages;
+        await renderizarPdf(token);
+    } catch (error) {
+        if (token !== estadoPdf.token) return;
+        el.pdfPages.replaceChildren();
+        const mensaje = document.createElement('p');
+        mensaje.className = 'muted';
+        mensaje.textContent = `No se pudo mostrar el PDF: ${error.message || error}`;
+        el.pdfPages.append(mensaje);
+        mostrarToast('No se pudo mostrar el PDF.');
+    }
+}
+
+async function renderizarPdf(token) {
+    const pdf = estadoPdf.pdf;
+    if (!pdf || token !== estadoPdf.token) return;
+
+    el.pdfPages.replaceChildren();
+
+    const primeraPagina = await pdf.getPage(1);
+    if (token !== estadoPdf.token) return;
+
+    const viewportBase = primeraPagina.getViewport({ scale: 1 });
+    const anchoDisponible = Math.max(200, el.pdfPages.clientWidth - 32);
+    estadoPdf.escalaBase = anchoDisponible / viewportBase.width;
+    estadoPdf.paginaActual = Math.min(Math.max(1, estadoPdf.paginaActual), pdf.numPages);
+    actualizarInfoPdf();
+
+    for (let numero = 1; numero <= pdf.numPages; numero++) {
+        if (token !== estadoPdf.token) return;
+
+        const pagina = numero === 1 ? primeraPagina : await pdf.getPage(numero);
+        const viewport = pagina.getViewport({ scale: estadoPdf.escalaBase * estadoPdf.zoom });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+
+        await pagina.render({
+            canvasContext: canvas.getContext('2d'),
+            viewport
+        }).promise;
+
+        if (token !== estadoPdf.token) return;
+
+        const contenedor = document.createElement('div');
+        contenedor.className = 'pdf-page';
+        contenedor.dataset.pagina = String(numero);
+        contenedor.append(canvas);
+        el.pdfPages.append(contenedor);
+    }
+
+    actualizarInfoPdf();
+    irAPagina(estadoPdf.paginaActual);
+}
+
+function actualizarInfoPdf() {
+    el.pdfPageInfo.textContent = estadoPdf.totalPaginas
+        ? `${estadoPdf.paginaActual} / ${estadoPdf.totalPaginas}`
+        : '- / -';
+    el.pdfZoomInfo.textContent = `${Math.round(estadoPdf.zoom * 100)}%`;
+    el.pdfPrev.disabled = estadoPdf.paginaActual <= 1;
+    el.pdfNext.disabled = estadoPdf.paginaActual >= estadoPdf.totalPaginas;
+}
+
+function irAPagina(numero) {
+    if (!estadoPdf.totalPaginas) return;
+    const destino = Math.min(Math.max(1, numero), estadoPdf.totalPaginas);
+    const pagina = el.pdfPages.querySelector(`.pdf-page[data-pagina="${destino}"]`);
+    if (pagina) {
+        pagina.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+    estadoPdf.paginaActual = destino;
+    actualizarInfoPdf();
+}
+
+function actualizarPaginaVisible() {
+    if (!estadoPdf.totalPaginas) return;
+
+    const limite = el.pdfPages.getBoundingClientRect().top + 24;
+    let visible = 1;
+    for (const pagina of el.pdfPages.querySelectorAll('.pdf-page')) {
+        if (pagina.getBoundingClientRect().top <= limite) {
+            visible = Number(pagina.dataset.pagina);
+        } else {
+            break;
+        }
+    }
+
+    if (visible !== estadoPdf.paginaActual) {
+        estadoPdf.paginaActual = visible;
+        actualizarInfoPdf();
+    }
+}
+
+async function cambiarZoom(factor) {
+    if (!estadoPdf.pdf) return;
+    const nuevo = Math.min(3, Math.max(0.5, estadoPdf.zoom * factor));
+    if (nuevo === estadoPdf.zoom) return;
+    estadoPdf.zoom = nuevo;
+    const pagina = estadoPdf.paginaActual;
+    const token = ++estadoPdf.token;
+    await renderizarPdf(token).catch(() => {});
+    if (token === estadoPdf.token) {
+        irAPagina(pagina);
+    }
+}
+
+async function ajustarPdf() {
+    if (!estadoPdf.pdf) return;
+    estadoPdf.zoom = 1;
+    const pagina = estadoPdf.paginaActual;
+    const token = ++estadoPdf.token;
+    await renderizarPdf(token).catch(() => {});
+    if (token === estadoPdf.token) {
+        irAPagina(pagina);
+    }
+}
+
+function imprimirPdf() {
+    if (!estadoPdf.pdf) return;
+    window.print();
+}
+
+function cerrarPdf() {
+    estadoPdf.token++;
+    if (estadoPdf.pdf) {
+        estadoPdf.pdf.destroy().catch(() => {});
+        estadoPdf.pdf = null;
+    }
+    estadoPdf.totalPaginas = 0;
+    estadoPdf.paginaActual = 1;
+    el.modalPdf.classList.add('hidden');
+    el.pdfPages.replaceChildren();
+    el.pdfPageInfo.textContent = '- / -';
+    el.pdfZoomInfo.textContent = '100%';
+    el.pdfPrev.disabled = true;
+    el.pdfNext.disabled = true;
 }
 
 function conectarEventos() {
@@ -775,20 +1116,31 @@ function initAcciones() {
 
     el.btnFechas.addEventListener('click', () => {
         el.menuFechas.classList.toggle('hidden');
+        el.menuGrupos.classList.add('hidden');
+    });
+
+    el.btnGrupos.addEventListener('click', () => {
+        el.menuGrupos.classList.toggle('hidden');
+        el.menuFechas.classList.add('hidden');
     });
 
     document.addEventListener('click', evento => {
         if (!el.filtroFechas.contains(evento.target)) {
             el.menuFechas.classList.add('hidden');
         }
+        if (!el.filtroGrupos.contains(evento.target)) {
+            el.menuGrupos.classList.add('hidden');
+        }
     });
 
     el.btnLimpiarFiltros.addEventListener('click', () => {
         estadoApp.fechasSeleccionadas.clear();
+        estadoApp.chatsSeleccionados.clear();
         estadoApp.busqueda = '';
         estadoApp.pagina = 1;
         el.buscarArchivo.value = '';
         renderMenuFechas();
+        renderMenuGrupos();
         renderArchivos();
     });
 
@@ -824,6 +1176,23 @@ function initAcciones() {
     });
 }
 
+function initModalPdf() {
+    el.btnCerrarPdf.addEventListener('click', cerrarPdf);
+    el.pdfBackdrop.addEventListener('click', cerrarPdf);
+    el.pdfPrev.addEventListener('click', () => irAPagina(estadoPdf.paginaActual - 1));
+    el.pdfNext.addEventListener('click', () => irAPagina(estadoPdf.paginaActual + 1));
+    el.pdfZoomOut.addEventListener('click', () => cambiarZoom(0.8));
+    el.pdfZoomIn.addEventListener('click', () => cambiarZoom(1.25));
+    el.pdfFit.addEventListener('click', ajustarPdf);
+    el.pdfPrint.addEventListener('click', imprimirPdf);
+    el.pdfPages.addEventListener('scroll', actualizarPaginaVisible, { passive: true });
+    document.addEventListener('keydown', evento => {
+        if (evento.key === 'Escape' && !el.modalPdf.classList.contains('hidden')) {
+            cerrarPdf();
+        }
+    });
+}
+
 function debounce(fn, ms) {
     let temporizador = null;
     return (...args) => {
@@ -836,6 +1205,7 @@ function init() {
     initTabs();
     initAcciones();
     initModalFiltros();
+    initModalPdf();
 
     cargarEstado().catch(() => setBadge('error', 'No se pudo conectar con el servicio'));
     cargarComprobantes().catch(() => {});

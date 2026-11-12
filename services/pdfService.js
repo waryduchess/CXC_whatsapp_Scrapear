@@ -6,11 +6,16 @@
 const PDFDocument = require('pdfkit');
 const sharp = require('sharp');
 
-const MIMETYPES_PDFKIT = new Set(['image/jpeg', 'image/jpg', 'image/png']);
+const MAX_LADO_IMAGEN = 1800;
+const CALIDAD_JPEG = 85;
+const MARGEN_PAGINA = 18;
+const TAMANO_PAGINA = ['A4', 'LETTER'].includes(String(process.env.PDF_PAGINA || '').toUpperCase())
+    ? String(process.env.PDF_PAGINA).toUpperCase()
+    : 'A4';
 
 /**
- * Normaliza cualquier imagen a un formato que pdfkit pueda incrustar.
- * JPEG/PNG se usan tal cual; el resto (webp, gif, bmp, etc.) se convierten a PNG.
+ * Normaliza, orienta, redimensiona y comprime una imagen para incrustarla en el PDF.
+ * JPEG/PNG conservan su formato; el resto se convierte a PNG.
  *
  * @param {Buffer} bufferImagen - Buffer de la imagen original
  * @param {string} [mimetype='image/jpeg'] - Tipo MIME de la imagen
@@ -18,17 +23,25 @@ const MIMETYPES_PDFKIT = new Set(['image/jpeg', 'image/jpg', 'image/png']);
  */
 async function normalizarImagen(bufferImagen, mimetype = 'image/jpeg') {
     const tipo = String(mimetype).toLowerCase();
+    const imagen = sharp(bufferImagen)
+        .rotate()
+        .resize({
+            width: MAX_LADO_IMAGEN,
+            height: MAX_LADO_IMAGEN,
+            fit: 'inside',
+            withoutEnlargement: true
+        });
 
-    if (MIMETYPES_PDFKIT.has(tipo)) {
-        return bufferImagen;
+    if (tipo === 'image/jpeg' || tipo === 'image/jpg') {
+        return imagen.jpeg({ quality: CALIDAD_JPEG, mozjpeg: true }).toBuffer();
     }
 
-    return sharp(bufferImagen).png().toBuffer();
+    return imagen.png({ compressionLevel: 9, palette: true, quality: 90 }).toBuffer();
 }
 
 /**
- * Envuelve una imagen dentro de un archivo PDF.
- * Se usa para que fotos y screenshots se almacenen en formato uniforme PDF.
+ * Envuelve una imagen dentro de un PDF de una sola página.
+ * La imagen se escala y centra conservando su proporción.
  *
  * @param {Buffer} bufferImagen - Buffer de la imagen
  * @param {string} [mimetype='image/jpeg'] - Tipo MIME de la imagen
@@ -46,10 +59,20 @@ async function imagenAPdf(bufferImagen, mimetype = 'image/jpeg') {
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
-            // Obtener dimensiones de la imagen para ajustar la página
             const img = doc.openImage(bufferNormalizado);
-            doc.addPage({ size: [img.width, img.height] });
-            doc.image(img, 0, 0, { width: img.width, height: img.height });
+            const horizontal = img.width > img.height;
+            doc.addPage({
+                size: TAMANO_PAGINA,
+                layout: horizontal ? 'landscape' : 'portrait'
+            });
+
+            const ancho = doc.page.width - (MARGEN_PAGINA * 2);
+            const alto = doc.page.height - (MARGEN_PAGINA * 2);
+            doc.image(img, MARGEN_PAGINA, MARGEN_PAGINA, {
+                fit: [ancho, alto],
+                align: 'center',
+                valign: 'center'
+            });
 
             doc.end();
         } catch (error) {

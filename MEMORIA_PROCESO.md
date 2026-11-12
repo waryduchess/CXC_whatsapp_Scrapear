@@ -38,8 +38,8 @@ No se analiza el contenido ni se persiste en base de datos: solo se almacenan lo
 WhatsApp recibe media
         │
         ├── ¿Es imagen (image/*)?
-        │       ├── Normalizar con sharp si no es JPEG/PNG
-        │       ├── Convertir a PDF con pdfkit
+        │       ├── Orientar, redimensionar (máx. 1800 px) y comprimir con sharp
+        │       ├── Convertir a PDF de una página A4/Carta con pdfkit
         │       └── Guardar como {GRUPO_O_CHAT}/{REMITENTE} - {CAPTION}.pdf
         │
         ├── ¿Es PDF (application/pdf)?
@@ -66,6 +66,7 @@ comprobantes/{YYYY-MM-DD}/{GRUPO_O_CHAT}/{REMITENTE} - {CAPTION}.pdf
 - Caracteres no válidos para nombres de archivo se reemplazan por `-`.
 - Nombres válidos en Windows: se evitan nombres reservados (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) y se limita la longitud.
 - Si el nombre ya existe: `omar - Hotel Haba.pdf`, `omar - Hotel Haba_2.pdf`, etc.
+- Las imágenes se ajustan a una página A4 o Carta (`PDF_PAGINA`), se orientan, se redimensionan a máx. 1800 px y se comprimen para reducir el tamaño del PDF.
 
 ---
 
@@ -156,6 +157,10 @@ CXC_whatsapp_Scrapear/
   `/api/comprobantes`, `/api/filtros`, `/api/grupos`, `/api/reiniciar` y `/api/abrir-carpeta`.
 - La descarga acepta `/api/comprobantes/:fecha/:grupo/:archivo` y mantiene la ruta antigua
   `/api/comprobantes/:fecha/:archivo` para los comprobantes guardados en la raíz de la fecha.
+- La tabla de comprobantes se filtra por fechas y por grupo/chat (multi-selección), combinados con la búsqueda.
+- La tabla tiene botones **Ver** y **Descargar**. **Ver** (o doble clic en la fila) abre un visor PDF.js
+  dentro del panel con navegación, zoom, impresión y descarga. Los archivos de PDF.js se sirven desde
+  `/vendor/pdfjs/`; la ruta `?inline=1` sigue disponible para servir un PDF inline.
 - El botón **Editar** abre un modal con pestañas General/Números/Grupos. Los filtros se
   guardan en `config/filtros.json` (escritura atómica), se aplican en caliente y se
   notifican por SSE. `POST /api/filtros` valida modo, números y grupos; `GET /api/grupos`

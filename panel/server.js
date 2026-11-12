@@ -14,15 +14,26 @@ const {
 } = require('../services/configFiltros');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const PDFJS_DIR = path.join(__dirname, '..', 'node_modules', 'pdfjs-dist');
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_ARCHIVO = /\.pdf$/i;
 const TIPOS_CONTENIDO = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
     '.svg': 'image/svg+xml',
     '.png': 'image/png',
-    '.ico': 'image/x-icon'
+    '.gif': 'image/gif',
+    '.ico': 'image/x-icon',
+    '.json': 'application/json; charset=utf-8',
+    '.map': 'application/json; charset=utf-8',
+    '.bcmap': 'application/octet-stream',
+    '.properties': 'text/plain; charset=utf-8',
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2'
 };
 
 function aplicarCabecerasSeguridad(res) {
@@ -252,7 +263,7 @@ function resolverArchivo(fecha, grupoCodificado, nombreCodificado) {
     return ruta;
 }
 
-function descargarArchivo(res, ruta) {
+function descargarArchivo(res, ruta, opciones = {}) {
     let info;
     try {
         info = fs.statSync(ruta);
@@ -271,12 +282,20 @@ function descargarArchivo(res, ruta) {
         .replace(/[^\x20-\x7E]/g, '_')
         .replace(/["\\]/g, '_');
 
-    res.writeHead(200, {
+    const inline = opciones.inline === true;
+    const cabeceras = {
         'Content-Type': 'application/pdf',
         'Content-Length': info.size,
-        'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nombre)}`,
+        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nombre)}`,
         'Cache-Control': 'no-store'
-    });
+    };
+
+    if (inline) {
+        cabeceras['X-Frame-Options'] = 'SAMEORIGIN';
+        cabeceras['Content-Security-Policy'] = "frame-ancestors 'self'";
+    }
+
+    res.writeHead(200, cabeceras);
 
     const flujo = fs.createReadStream(ruta);
     flujo.on('error', (error) => {
@@ -317,6 +336,52 @@ function servirEstatico(req, res, pathname) {
         'Content-Type': tipo,
         'Content-Length': info.size,
         'Cache-Control': 'no-store'
+    });
+
+    const flujo = fs.createReadStream(ruta);
+    flujo.on('error', () => {
+        if (!res.headersSent) responderTexto(res, 500, 'No se pudo leer el archivo');
+        else res.destroy();
+    });
+    flujo.pipe(res);
+}
+
+function servirPdfJs(req, res, pathname) {
+    const prefijo = '/vendor/pdfjs/';
+    let relativo;
+    try {
+        relativo = decodeURIComponent(pathname.slice(prefijo.length));
+    } catch (error) {
+        return responderTexto(res, 400, 'Solicitud inválida');
+    }
+
+    if (!relativo || relativo.includes('\0')) {
+        return responderTexto(res, 400, 'Solicitud inválida');
+    }
+
+    const ruta = path.resolve(PDFJS_DIR, relativo);
+    if (!ruta.startsWith(PDFJS_DIR + path.sep)) {
+        return responderTexto(res, 403, 'Prohibido');
+    }
+
+    let info;
+    try {
+        info = fs.statSync(ruta);
+    } catch (error) {
+        return responderTexto(res, 404, 'No encontrado');
+    }
+
+    if (!info.isFile()) {
+        return responderTexto(res, 404, 'No encontrado');
+    }
+
+    const tipo = TIPOS_CONTENIDO[path.extname(ruta).toLowerCase()] || 'application/octet-stream';
+    res.writeHead(200, {
+        'Content-Type': tipo,
+        'Content-Length': info.size,
+        'Cache-Control': 'public, max-age=3600',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'Content-Security-Policy': "frame-ancestors 'self'"
     });
 
     const flujo = fs.createReadStream(ruta);
@@ -501,7 +566,9 @@ async function manejarApi(req, res, url, puerto, opciones) {
         if (!ruta) {
             return responderJson(res, 400, { ok: false, error: 'Archivo inválido' });
         }
-        return descargarArchivo(res, ruta);
+        return descargarArchivo(res, ruta, {
+            inline: searchParams.get('inline') === '1'
+        });
     }
 
     if (pathname === '/api/reiniciar' && req.method === 'POST') {
@@ -575,6 +642,20 @@ function iniciarPanel(opciones = {}) {
                         res.destroy();
                     }
                 });
+                return;
+            }
+
+            if (url.pathname.startsWith('/vendor/pdfjs/')) {
+                try {
+                    servirPdfJs(req, res, url.pathname);
+                } catch (error) {
+                    console.error('[panel] Error sirviendo PDF.js:', error.message || error);
+                    if (!res.headersSent) {
+                        responderTexto(res, 500, 'Error interno');
+                    } else {
+                        res.destroy();
+                    }
+                }
                 return;
             }
 

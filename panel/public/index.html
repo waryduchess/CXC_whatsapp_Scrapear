@@ -97,6 +97,12 @@
                             </button>
                             <div id="menu-fechas" class="dropdown-menu hidden"></div>
                         </div>
+                        <div class="dropdown" id="filtro-grupos">
+                            <button id="btn-grupos" class="btn btn-small" type="button">
+                                Grupo/Chat <span id="grupos-count" class="pill">Todos</span>
+                            </button>
+                            <div id="menu-grupos" class="dropdown-menu hidden"></div>
+                        </div>
                         <button id="btn-limpiar-filtros" class="btn btn-small" type="button">Borrar filtros</button>
                     </div>
                 </div>
@@ -228,8 +234,42 @@
         </div>
     </div>
 
+    <div id="modal-pdf" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-pdf-titulo">
+        <div class="modal-backdrop" data-cerrar-pdf></div>
+        <div class="modal-panel modal-panel-pdf">
+            <div class="modal-head">
+                <div>
+                    <h2 id="modal-pdf-titulo">Comprobante</h2>
+                    <p id="modal-pdf-subtitulo" class="muted"></p>
+                </div>
+                <button id="btn-cerrar-pdf" class="btn btn-small" type="button" aria-label="Cerrar">Cerrar</button>
+            </div>
+            <div class="modal-body modal-body-pdf">
+                <div class="pdf-viewer">
+                    <div class="pdf-toolbar">
+                        <button id="pdf-prev" class="btn btn-small" type="button">Anterior</button>
+                        <span id="pdf-page-info" class="muted">- / -</span>
+                        <button id="pdf-next" class="btn btn-small" type="button">Siguiente</button>
+                        <span class="pdf-toolbar-sep"></span>
+                        <button id="pdf-zoom-out" class="btn btn-small" type="button" aria-label="Alejar">-</button>
+                        <span id="pdf-zoom-info" class="muted">100%</span>
+                        <button id="pdf-zoom-in" class="btn btn-small" type="button" aria-label="Acercar">+</button>
+                        <button id="pdf-fit" class="btn btn-small" type="button">Ajustar</button>
+                        <span class="pdf-toolbar-sep"></span>
+                        <button id="pdf-print" class="btn btn-small" type="button">Imprimir</button>
+                        <a id="pdf-descargar" class="btn btn-small btn-primary" href="#" download>Descargar</a>
+                    </div>
+                    <div id="pdf-pages" class="pdf-pages">
+                        <p class="muted">Cargando PDF...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast hidden" role="status"></div>
 
+    <script src="/vendor/pdfjs/build/pdf.min.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>

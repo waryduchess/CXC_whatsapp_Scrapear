@@ -7,7 +7,7 @@ organizados por grupo o chat, con el remitente y el caption del mensaje en el no
 
 - Escucha mensajes de WhatsApp con `whatsapp-web.js` y `LocalAuth`.
 - Descarga **imágenes** (`image/*`) y **PDFs** (`application/pdf`).
-- Convierte cualquier imagen a PDF.
+- Convierte cualquier imagen a PDF de una sola página, ajustada al tamaño de hoja y comprimida.
 - Renombra el archivo como `<remitente> - <caption>.pdf`.
 - Guarda todo en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/`, usando la fecha del mensaje.
 - Los grupos usan su nombre; si hay nombres repetidos, agrega los últimos 6 dígitos del ID.
@@ -27,6 +27,8 @@ El servicio levanta un panel en `http://127.0.0.1:3001` (se puede cambiar con
 - Código QR cuando hace falta vincular el dispositivo.
 - Filtros activos editables (modo, números y grupos) sin tocar `.env`.
 - Registros en vivo y comprobantes por fecha, grupo o chat.
+- Filtros de comprobantes por fechas y por grupo/chat, con búsqueda y paginación.
+- Botones **Ver** y **Descargar**; **Ver** (o doble clic) abre el PDF con visor PDF.js, zoom, impresión y descarga.
 - Botones para reiniciar el servicio (bajo PM2) y abrir la carpeta de comprobantes.
 
 El panel solo escucha en `127.0.0.1`; no se expone a la red local. Los filtros guardados
@@ -63,6 +65,9 @@ HTTPS (requiere Git instalado) y `.npmrc` permite que Puppeteer descargue Chrome
    corriendo, el lanzador lo inicia sin mostrar ventanas negras.
 4. El acceso de Inicio arranca el servicio y abre el panel al iniciar sesión en Windows.
 5. Ambos accesos usan el icono `windows\cxc-whatsapp.ico`.
+
+Si actualizas una instalación existente, ejecuta `npm install` para instalar `pdfjs-dist`
+y reinicia el servicio.
 
 Requisitos: Node.js 18 o superior, Git y Chrome o Edge. El servicio arranca al iniciar
 sesión, no antes del login. Si el puerto 3001 está ocupado, cambia `PANEL_PORT` en `.env`
@@ -101,6 +106,9 @@ Para permitir todo:
 ```env
 FILTRO_MODO=todos
 ```
+
+El tamaño de página de las imágenes convertidas se controla con `PDF_PAGINA` en `.env`:
+`A4` (por defecto) o `LETTER`.
 
 ## Prueba sin WhatsApp
 
