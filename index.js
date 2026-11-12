@@ -1,9 +1,14 @@
 require('dotenv').config(); // 1. Cargar variables de entorno PRIMERO
+const { instalarLogger } = require('./services/logger');
+instalarLogger();
+const QRCode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { procesarMedia } = require('./mediaHandler'); // 2. Importar el orquestador
 const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
+const { estado, actualizarEstado, eventos } = require('./services/estado');
+const { iniciarPanel } = require('./panel/server');
 
 async function mensajeConIdentidadTelefonica(msg) {
     const chatId = msg.from;
@@ -72,29 +77,192 @@ const client = new Client({
     }
 });
 
+let qrSecuencia = 0;
+let reiniciando = false;
+let saliendo = false;
+let watchdog = null;
+
+async function cerrarCliente() {
+    try {
+        await Promise.race([
+            Promise.resolve(client.destroy()).catch(() => {}),
+            new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
+    } catch (error) {
+        console.warn('[proceso] No se pudo cerrar el cliente:', error.message || error);
+    }
+}
+
+function cerrarServicio(motivo, codigo = 1) {
+    if (saliendo || reiniciando) return;
+    saliendo = true;
+    actualizarEstado({
+        fase: codigo === 0 ? 'reiniciando' : 'error',
+        detalle: motivo,
+        ultimoError: codigo === 0 ? null : motivo
+    });
+    console.error(`[proceso] ${motivo}. Cerrando para que PM2 reinicie...`);
+    setTimeout(async () => {
+        await cerrarCliente();
+        process.exit(codigo);
+    }, 1000);
+}
+
+function iniciarWatchdog() {
+    if (watchdog) return;
+
+    const navegador = client.pupBrowser;
+    if (navegador) {
+        navegador.on('disconnected', () => cerrarServicio('Chromium se desconectó'));
+    }
+
+    watchdog = setInterval(() => {
+        try {
+            if (!client.pupBrowser || !client.pupBrowser.isConnected()) {
+                cerrarServicio('Chromium no está conectado');
+                return;
+            }
+            if (client.pupPage && client.pupPage.isClosed()) {
+                cerrarServicio('La página de WhatsApp se cerró');
+            }
+        } catch (error) {
+            cerrarServicio(`Error en watchdog: ${error.message || error}`);
+        }
+    }, 30000);
+
+    console.log('[watchdog] Vigilancia de Chromium activa');
+}
+
+process.on('uncaughtException', (error) => {
+    console.error('[proceso] Excepción no capturada:', error);
+    cerrarServicio('Excepción no capturada');
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[proceso] Promesa rechazada sin manejar:', reason);
+    cerrarServicio('Promesa rechazada sin manejar');
+});
+
+process.on('SIGINT', () => {
+    if (saliendo) return;
+    saliendo = true;
+    actualizarEstado({ fase: 'reiniciando', detalle: 'Deteniendo servicio...' });
+    console.log('[proceso] Cerrando por SIGINT...');
+    cerrarCliente().finally(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+    if (saliendo) return;
+    saliendo = true;
+    actualizarEstado({ fase: 'reiniciando', detalle: 'Deteniendo servicio...' });
+    console.log('[proceso] Cerrando por SIGTERM...');
+    cerrarCliente().finally(() => process.exit(0));
+});
+
 client.on('loading_screen', (percent, message) => {
     console.log(`[WhatsApp] Cargando: ${percent}% - ${message}`);
+    if (estado.fase === 'listo') return;
+    actualizarEstado({
+        fase: 'iniciando',
+        detalle: `Cargando WhatsApp: ${percent}% - ${message}`
+    });
 });
 
 client.on('authenticated', () => {
+    qrSecuencia++;
     console.log('[WhatsApp] ¡Autenticado exitosamente!');
+    actualizarEstado({
+        fase: 'autenticando',
+        detalle: 'Autenticado. Cargando chats...',
+        qr: null,
+        cuenta: null
+    });
 });
 
 client.on('auth_failure', (msg) => {
+    qrSecuencia++;
     console.error('[WhatsApp] Falló la autenticación:', msg);
+    actualizarEstado({
+        fase: 'error',
+        detalle: 'Falló la autenticación',
+        ultimoError: String(msg),
+        qr: null,
+        cuenta: null
+    });
+    cerrarServicio('Falló la autenticación de WhatsApp');
 });
 
 client.on('disconnected', (reason) => {
+    qrSecuencia++;
     console.warn('[WhatsApp] Cliente desconectado:', reason);
+    if (reiniciando || saliendo) return;
+    actualizarEstado({
+        fase: 'desconectado',
+        detalle: `Desconectado: ${reason}`,
+        ultimoError: String(reason),
+        qr: null,
+        cuenta: null
+    });
+    cerrarServicio(`WhatsApp se desconectó: ${reason}`);
 });
 
-client.on('qr', (qr) => {
-    qrcode.generate(qr, { small: true });
+client.on('qr', async (qr) => {
+    if (saliendo || reiniciando) return;
+    const secuencia = ++qrSecuencia;
+
+    qrcode.generate(qr, { small: true }, (codigo) => {
+        process.stdout.write(`${codigo}\n`);
+    });
     console.log('Escanea este código QR con tu aplicación de WhatsApp.');
+
+    try {
+        const dataUrl = await QRCode.toDataURL(qr, {
+            margin: 1,
+            width: 320,
+            errorCorrectionLevel: 'M'
+        });
+        if (secuencia !== qrSecuencia || saliendo || reiniciando) return;
+        actualizarEstado({
+            fase: 'esperando_qr',
+            detalle: 'Escanea el código QR con WhatsApp',
+            qr: dataUrl,
+            ultimoError: null,
+            cuenta: null
+        });
+    } catch (error) {
+        console.error('[WhatsApp] No se pudo generar la imagen del QR:', error.message || error);
+        if (secuencia !== qrSecuencia || saliendo || reiniciando) return;
+        actualizarEstado({
+            fase: 'esperando_qr',
+            detalle: 'Escanea el QR en la terminal',
+            qr: null,
+            cuenta: null
+        });
+    }
 });
 
 client.on('ready', async () => {
+    qrSecuencia++;
     console.log('¡Cliente de WhatsApp listo y escuchando mensajes!');
+
+    const info = client.info || {};
+    const numero = info.wid?.user || info.me?.user || info.wid?._serialized?.split('@')[0] || null;
+    const nombre = info.pushname || info.me?.pushname || info.me?.name || null;
+
+    actualizarEstado({
+        fase: 'listo',
+        detalle: 'Conectado y escuchando mensajes',
+        qr: null,
+        ultimoError: null,
+        cuenta: {
+            nombre,
+            numero,
+            plataforma: info.platform || null
+        }
+    });
+
+    iniciarWatchdog();
+
     try {
         const chats = await obtenerGruposBasicos(client);
         client.__gruposPorId = new Map(
@@ -165,6 +333,11 @@ client.on('message_create', async (msg) => {
 
         if (resultado.exito) {
             console.log(`[index] Archivo almacenado: ${resultado.ruta}`);
+            eventos.emit('archivo', {
+                fecha: resultado.fechaRecepcion,
+                nombre: resultado.nombreArchivo,
+                ruta: resultado.ruta
+            });
         } else if (resultado.rutaUsada !== 'ignorado') {
             console.warn(`[index] No se pudo almacenar el archivo de ${remitente}`);
         }
@@ -173,14 +346,32 @@ client.on('message_create', async (msg) => {
     }
 });
 
-client.initialize()
-    .catch(async (err) => {
-        console.error('[WhatsApp] Error al inicializar el cliente:', err.message || err);
-        console.error('[WhatsApp] Detalle:', err.stack || err);
-        try {
-            await client.destroy();
-        } catch (errorCierre) {
-            console.warn('[WhatsApp] No se pudo cerrar el cliente:', errorCierre.message || errorCierre);
-        }
-        process.exit(1);
-    });
+iniciarPanel({
+    onReiniciar: async () => {
+        reiniciando = true;
+        actualizarEstado({ fase: 'reiniciando', detalle: 'Reiniciando servicio...' });
+        console.log('[panel] Reinicio solicitado desde el panel.');
+        await cerrarCliente();
+        process.exit(0);
+    }
+}).then(() => {
+    actualizarEstado({ fase: 'iniciando', detalle: 'Iniciando WhatsApp...' });
+    client.initialize()
+        .then(() => {
+            iniciarWatchdog();
+        })
+        .catch(async (err) => {
+            console.error('[WhatsApp] Error al inicializar el cliente:', err.message || err);
+            console.error('[WhatsApp] Detalle:', err.stack || err);
+            actualizarEstado({
+                fase: 'error',
+                detalle: 'Error al inicializar WhatsApp',
+                ultimoError: err.message || String(err)
+            });
+            await cerrarCliente();
+            process.exit(1);
+        });
+}).catch((error) => {
+    console.error('[panel] No se pudo iniciar el panel:', error.message || error);
+    process.exit(1);
+});

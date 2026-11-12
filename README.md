@@ -16,6 +16,18 @@ renombrados con el caption del mensaje.
 
 No usa IA ni base de datos: solo almacena los archivos recibidos.
 
+## Panel web local
+
+El servicio levanta un panel en `http://127.0.0.1:3001` (se puede cambiar con
+`PANEL_PORT` en `.env`). Desde ahí puedes ver:
+
+- Estado de la conexión y cuenta de WhatsApp.
+- Código QR cuando hace falta vincular el dispositivo.
+- Filtros activos, registros en vivo y comprobantes por fecha.
+- Botones para reiniciar el servicio (bajo PM2) y abrir la carpeta de comprobantes.
+
+El panel solo escucha en `127.0.0.1`; no se expone a la red local.
+
 ## Configuración
 
 1. Copia `.env.example` a `.env`.
@@ -32,11 +44,32 @@ npm install
 npm start
 ```
 
-Escanea el QR con WhatsApp la primera vez.
+Abre `http://127.0.0.1:3001` y escanea el QR con WhatsApp la primera vez.
 
 Funciona en Linux y Windows. La dependencia `whatsapp-web.js` se instala desde GitHub por
 HTTPS (requiere Git instalado) y `.npmrc` permite que Puppeteer descargue Chrome durante
 `npm install`.
+
+## Windows con PM2
+
+1. Copia el proyecto a una ruta corta, por ejemplo `C:\CXC_WhatsApp`.
+2. Ejecuta `windows\instalar-windows.bat` una vez. Verifica Node.js y Git, instala las
+   dependencias, deja PM2 local y crea los accesos de Escritorio e Inicio.
+3. Usa el acceso `CXC WhatsApp` del Escritorio para abrir el panel. Si el servicio no está
+   corriendo, el lanzador lo inicia sin mostrar ventanas negras.
+4. El acceso de Inicio arranca el servicio al iniciar sesión en Windows.
+
+Requisitos: Node.js 18 o superior, Git y Chrome o Edge. El servicio arranca al iniciar
+sesión, no antes del login. Si el puerto 3001 está ocupado, cambia `PANEL_PORT` en `.env`
+y vuelve a iniciar el servicio.
+
+Comandos útiles:
+
+```bash
+npm run pm2:start
+npm run pm2:save
+npm run pm2:logs
+```
 
 ## Filtros
 

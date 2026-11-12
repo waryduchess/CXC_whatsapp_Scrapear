@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CXC WhatsApp | Panel</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="logo">CXC</div>
+            <div>
+                <h1>Panel de comprobantes</h1>
+                <p class="subtitle">Recepción por WhatsApp</p>
+            </div>
+        </div>
+        <div class="status-area">
+            <span id="estado-badge" class="badge badge-iniciando">Iniciando</span>
+            <span id="estado-detalle" class="status-detail">Conectando...</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="kpis" aria-label="Resumen">
+            <article class="kpi">
+                <span class="kpi-label">Cuenta</span>
+                <strong id="kpi-cuenta">-</strong>
+            </article>
+            <article class="kpi">
+                <span class="kpi-label">Activo desde</span>
+                <strong id="kpi-inicio">-</strong>
+            </article>
+            <article class="kpi">
+                <span class="kpi-label">Tiempo activo</span>
+                <strong id="kpi-uptime">-</strong>
+            </article>
+            <article class="kpi">
+                <span class="kpi-label">Último archivo</span>
+                <strong id="kpi-ultimo">-</strong>
+            </article>
+        </section>
+
+        <nav class="tabs" role="tablist" aria-label="Secciones">
+            <button class="tab active" data-tab="estado" role="tab" aria-selected="true">Estado</button>
+            <button class="tab" data-tab="comprobantes" role="tab" aria-selected="false">Comprobantes</button>
+            <button class="tab" data-tab="registros" role="tab" aria-selected="false">Registros</button>
+        </nav>
+
+        <section id="tab-estado" class="tab-panel active" role="tabpanel">
+            <div class="grid-2">
+                <article class="card">
+                    <h2>Conexión</h2>
+
+                    <div id="qr-wrap" class="qr-wrap hidden">
+                        <p>Escanea este código con WhatsApp:</p>
+                        <img id="qr-img" alt="Código QR de WhatsApp">
+                        <p class="hint">WhatsApp &gt; Dispositivos vinculados &gt; Vincular dispositivo</p>
+                    </div>
+
+                    <div id="cuenta-wrap" class="cuenta-wrap hidden">
+                        <p class="big" id="cuenta-nombre">-</p>
+                        <p class="muted" id="cuenta-numero">-</p>
+                        <p class="muted" id="cuenta-plataforma">-</p>
+                    </div>
+
+                    <div id="error-wrap" class="error-wrap hidden">
+                        <p id="error-texto"></p>
+                    </div>
+
+                    <div class="actions">
+                        <button id="btn-reiniciar" class="btn btn-primary" type="button">Reiniciar servicio</button>
+                        <button id="btn-abrir-carpeta" class="btn" type="button">Abrir carpeta</button>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <h2>Filtros activos</h2>
+                    <div id="filtros" class="filtros"></div>
+                </article>
+            </div>
+        </section>
+
+        <section id="tab-comprobantes" class="tab-panel" role="tabpanel">
+            <article class="card">
+                <div class="card-head">
+                    <h2>Comprobantes</h2>
+                    <div class="filters">
+                        <input id="buscar-archivo" type="search" placeholder="Buscar por nombre..." autocomplete="off">
+                        <div class="dropdown" id="filtro-fechas">
+                            <button id="btn-fechas" class="btn btn-small" type="button">
+                                Fechas <span id="fechas-count" class="pill">Todas</span>
+                            </button>
+                            <div id="menu-fechas" class="dropdown-menu hidden"></div>
+                        </div>
+                        <button id="btn-limpiar-filtros" class="btn btn-small" type="button">Borrar filtros</button>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Fecha</th>
+                                <th>Tamaño</th>
+                                <th>Modificado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-archivos"></tbody>
+                    </table>
+                </div>
+
+                <div class="pagination">
+                    <button id="pag-prev" class="btn btn-small" type="button">Anterior</button>
+                    <span id="pag-info">-</span>
+                    <button id="pag-next" class="btn btn-small" type="button">Siguiente</button>
+                </div>
+            </article>
+        </section>
+
+        <section id="tab-registros" class="tab-panel" role="tabpanel">
+            <article class="card">
+                <div class="card-head">
+                    <h2>Registros</h2>
+                    <div class="filters">
+                        <input id="buscar-log" type="search" placeholder="Buscar en registros..." autocomplete="off">
+                        <button id="btn-limpiar-logs" class="btn btn-small" type="button">Limpiar vista</button>
+                    </div>
+                </div>
+                <pre id="logs" class="logs" aria-live="polite"></pre>
+            </article>
+        </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

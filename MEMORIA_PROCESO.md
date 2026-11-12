@@ -78,9 +78,11 @@ comprobantes/{YYYY-MM-DD}/{CAPTION}.pdf
 |---------------------|------------------------------------|
 | `whatsapp-web.js`   | Cliente de WhatsApp                |
 | `qrcode-terminal`   | QR para autenticación de WhatsApp  |
+| `qrcode`            | Imagen del QR en el panel web      |
 | `dotenv`            | Variables de entorno               |
 | `pdfkit`            | Convertir imágenes a PDF           |
 | `sharp`             | Normalizar imágenes a PNG/JPEG     |
+| `pm2` (dev)         | Proceso en segundo plano y reinicio |
 
 ---
 
@@ -88,16 +90,26 @@ comprobantes/{YYYY-MM-DD}/{CAPTION}.pdf
 
 ```
 CXC_whatsapp_Scrapear/
-├── .env                        # Filtros de mensajes
-├── index.js                    # Punto de entrada: WhatsApp y delegación
+├── .env                        # Filtros de mensajes y PANEL_PORT
+├── index.js                    # Punto de entrada: WhatsApp, panel y watchdog
 ├── mediaHandler.js             # Convierte a PDF y guarda el archivo
+├── ecosystem.config.js         # Configuración de PM2
+├── panel/
+│   ├── server.js               # HTTP local, API y SSE
+│   └── public/                 # Interfaz del panel
 ├── services/
+│   ├── estado.js               # Estado compartido y eventos
+│   ├── logger.js               # Buffer de registros y captura de consola
 │   ├── filtroGrupos.js         # Resolución de grupos
 │   ├── filtroMensajes.js       # Filtro principal
 │   ├── filtroNumeros.js        # Filtro de números
 │   └── pdfService.js           # Conversión imagen → PDF
 ├── utils/
 │   └── validators.js           # Generación del nombre del archivo
+├── windows/
+│   ├── lanzador.vbs            # Arranque silencioso y apertura del panel
+│   ├── instalar-windows.ps1    # Instalación y accesos directos
+│   └── instalar-windows.bat    # Lanzador del instalador
 ├── comprobantes/               # Salida (PDF) por fecha YYYY-MM-DD
 ├── scripts/
 │   └── probar-archivos.js      # Prueba sin WhatsApp
@@ -110,15 +122,36 @@ CXC_whatsapp_Scrapear/
 
 | Módulo | Responsabilidad |
 |--------|----------------|
-| `index.js` | Inicializar WhatsApp, filtrar mensajes y delegar el media a `mediaHandler` |
+| `index.js` | Inicializar WhatsApp, filtrar mensajes, publicar estado y vigilar Chromium |
 | `mediaHandler.js` | Convertir imágenes a PDF, resolver nombre único y guardar |
+| `panel/server.js` | Servir el panel, API local, SSE y descarga de comprobantes |
+| `services/estado.js` | Mantener el estado compartido y emitir eventos |
+| `services/logger.js` | Guardar los últimos registros y emitirlos en vivo |
 | `services/pdfService.js` | `imagenAPdf(buffer, mimetype)` y `normalizarImagen` |
 | `utils/validators.js` | `generarNombreArchivo(caption)` |
 | `services/filtro*.js` | Filtrar por modo, números y grupos |
 
 ---
 
-## 8. Pendientes / Futuro
+## 8. Panel web y despliegue
+
+- El panel corre dentro del mismo proceso que el bot y escucha solo en `127.0.0.1`.
+- Puerto por defecto: `3001`, configurable con `PANEL_PORT` en `.env`.
+- Muestra estado, QR, cuenta conectada, filtros, registros y comprobantes por fecha.
+- La API interna expone `/api/salud`, `/api/estado`, `/api/logs`, `/api/eventos`,
+  `/api/comprobantes`, `/api/reiniciar` y `/api/abrir-carpeta`.
+- El botón de reinicio solo funciona bajo PM2 (`process.env.pm_id`).
+- PM2 usa `ecosystem.config.js` con autorestart, backoff, límite de memoria y logs en `logs/`.
+- Un watchdog revisa Chromium cada 30 segundos y sale si el navegador o la página se caen;
+  PM2 vuelve a iniciar el proceso.
+- En Windows, `windows\instalar-windows.bat` instala dependencias, PM2 local y crea los
+  accesos de Escritorio e Inicio. El arranque es al iniciar sesión, no antes del login.
+- El lanzador `windows\lanzador.vbs` verifica `/api/salud`, inicia o recarga PM2 y abre el
+  panel en Chrome o Edge; si no existen, usa el navegador predeterminado.
+
+---
+
+## 9. Pendientes / Futuro
 
 - [ ] Sincronización de la carpeta local con OneDrive.
 - [ ] Categorización de comprobantes (conciliado vs. no conciliado).
