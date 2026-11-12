@@ -1,86 +1,42 @@
 /**
  * pdfService.js
- * Operaciones con PDFs: extracción de texto, conversión PDF→imagen, conversión imagen→PDF.
+ * Conversión de imágenes a PDF y normalización de formatos.
  */
 
-const { PDFParse } = require('pdf-parse');
-const { execFile } = require('child_process');
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const sharp = require('sharp');
+
+const MIMETYPES_PDFKIT = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
 /**
- * Extrae el texto de un PDF.
- * Si el PDF es una imagen embebida (ej: Mifel), retornará un string vacío o con muy poco contenido.
- * 
- * @param {Buffer} bufferPdf - Buffer del archivo PDF
- * @returns {Promise<string>} Texto extraído del PDF
+ * Normaliza cualquier imagen a un formato que pdfkit pueda incrustar.
+ * JPEG/PNG se usan tal cual; el resto (webp, gif, bmp, etc.) se convierten a PNG.
+ *
+ * @param {Buffer} bufferImagen - Buffer de la imagen original
+ * @param {string} [mimetype='image/jpeg'] - Tipo MIME de la imagen
+ * @returns {Promise<Buffer>} Buffer listo para incrustar
  */
-async function extraerTexto(bufferPdf) {
-    try {
-        const parser = new PDFParse({ data: bufferPdf });
-        const resultado = await parser.getText();
-        return resultado.text || '';
-    } catch (error) {
-        console.warn('[pdfService] Error al extraer texto del PDF:', error.message);
-        return '';
-    }
-}
+async function normalizarImagen(bufferImagen, mimetype = 'image/jpeg') {
+    const tipo = String(mimetype).toLowerCase();
 
-/**
- * Convierte la primera página de un PDF a una imagen JPEG usando pdftoppm del sistema.
- * 
- * @param {Buffer} bufferPdf - Buffer del archivo PDF
- * @returns {Promise<Buffer>} Buffer de la imagen JPEG resultante
- */
-async function pdfAImagen(bufferPdf) {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-conv-'));
-    const tmpPdfPath = path.join(tmpDir, 'input.pdf');
-    const outPrefix = path.join(tmpDir, 'page');
-
-    try {
-        fs.writeFileSync(tmpPdfPath, bufferPdf);
-
-        await new Promise((resolve, reject) => {
-            execFile(
-                'pdftoppm',
-                ['-jpeg', '-singlefile', '-f', '1', '-l', '1', '-scale-to', '2048', tmpPdfPath, outPrefix],
-                (err) => {
-                    if (err) return reject(err);
-                    resolve();
-                }
-            );
-        });
-
-        const archivoGenerado = path.join(tmpDir, 'page.jpg');
-        if (!fs.existsSync(archivoGenerado)) {
-            throw new Error('No se generó la imagen del PDF con pdftoppm');
-        }
-
-        const bufferImagen = fs.readFileSync(archivoGenerado);
+    if (MIMETYPES_PDFKIT.has(tipo)) {
         return bufferImagen;
-
-    } finally {
-        try {
-            const archivos = fs.readdirSync(tmpDir);
-            archivos.forEach(f => fs.unlinkSync(path.join(tmpDir, f)));
-            fs.rmdirSync(tmpDir);
-        } catch (e) {
-            console.warn('[pdfService] Error al limpiar archivos temporales:', e.message);
-        }
     }
+
+    return sharp(bufferImagen).png().toBuffer();
 }
 
 /**
- * Envuelve una imagen (JPEG/PNG) dentro de un archivo PDF.
+ * Envuelve una imagen dentro de un archivo PDF.
  * Se usa para que fotos y screenshots se almacenen en formato uniforme PDF.
- * 
+ *
  * @param {Buffer} bufferImagen - Buffer de la imagen
  * @param {string} [mimetype='image/jpeg'] - Tipo MIME de la imagen
  * @returns {Promise<Buffer>} Buffer del PDF generado
  */
 async function imagenAPdf(bufferImagen, mimetype = 'image/jpeg') {
+    const bufferNormalizado = await normalizarImagen(bufferImagen, mimetype);
+
     return new Promise((resolve, reject) => {
         try {
             const doc = new PDFDocument({ autoFirstPage: false });
@@ -91,7 +47,7 @@ async function imagenAPdf(bufferImagen, mimetype = 'image/jpeg') {
             doc.on('error', reject);
 
             // Obtener dimensiones de la imagen para ajustar la página
-            const img = doc.openImage(bufferImagen);
+            const img = doc.openImage(bufferNormalizado);
             doc.addPage({ size: [img.width, img.height] });
             doc.image(img, 0, 0, { width: img.width, height: img.height });
 
@@ -103,7 +59,6 @@ async function imagenAPdf(bufferImagen, mimetype = 'image/jpeg') {
 }
 
 module.exports = {
-    extraerTexto,
-    pdfAImagen,
+    normalizarImagen,
     imagenAPdf
 };

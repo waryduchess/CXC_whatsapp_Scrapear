@@ -64,13 +64,11 @@ async function procesarCaso(descripcion, archivo, mimetype, cliente) {
     console.log(`      - Ruta usada: ${resultado.rutaUsada}`);
     console.log(`      - Archivo generado: ${resultado.nombreArchivo}`);
     console.log(`      - Tiempo: ${duracion}s`);
-    console.log(`      - Datos extraídos:`);
-    console.dir(resultado.datos, { depth: null, colors: true });
 }
 
 async function ejecutarPruebas() {
     console.log('='.repeat(70));
-    console.log(' INICIANDO PRUEBAS DE EXTRACCIÓN Y PROCESAMIENTO');
+    console.log(' INICIANDO PRUEBAS DE ALMACENAMIENTO');
     console.log('='.repeat(70));
 
     const args = process.argv.slice(2);

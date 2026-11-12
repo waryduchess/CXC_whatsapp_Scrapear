@@ -2,7 +2,6 @@ require('dotenv').config(); // 1. Cargar variables de entorno PRIMERO
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { procesarMedia } = require('./mediaHandler'); // 2. Importar el orquestador
-const { colaPendientes } = require('./services/colaPendientes'); // 3. Gestor de mensajes pendientes
 const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
 
@@ -58,6 +57,7 @@ listaDesdeEnv('GRUPOS_BLOQUEADOS').forEach(grupo => filtroMensajes.agregarGrupoB
 
 const client = new Client({
     authStrategy: new LocalAuth(),
+    authTimeoutMs: 120000,
     puppeteer: {
         headless: true,
         args: [
@@ -69,19 +69,6 @@ const client = new Client({
             '--no-zygote',
             '--disable-gpu'
         ]
-    }
-});
-
-// Callback cuando se guardan comprobantes por timeout (sin que llegara nombre posterior)
-colaPendientes.setOnTimeoutGuardado((resultados, remitente) => {
-    console.log(`\n[colaPendientes] Se guardaron ${resultados.length} comprobante(s) por tiempo agotado para ${remitente}:`);
-    for (const res of resultados) {
-        if (res.exito) {
-            console.log(`  Archivo: ${res.nombreArchivo}`);
-            console.dir(res.datos, { depth: null, colors: true });
-        } else {
-            console.warn(`  [!] Problemas en procesamiento → ${res.nombreArchivo}`);
-        }
     }
 });
 
@@ -142,95 +129,57 @@ client.on('message_create', async (msg) => {
     // Log de visibilidad para diagnóstico
     console.log(`[WhatsApp Event] type=${msg.type}, from=${msg.from}, group=${mensajeParaFiltro.groupId || 'privado'}, to=${msg.to}, hasMedia=${msg.hasMedia}, fromMe=${msg.fromMe}`);
 
-    // 2. Ignorar explícitamente stickers, audios, notas de voz, videos, reacciones
+    // 2. Ignorar explícitamente stickers, audios, notas de voz, videos y reacciones
     if (['sticker', 'ptt', 'audio', 'video', 'reaction'].includes(msg.type)) return;
 
-    // Identificador único del remitente (compatible con chats individuales y grupos)
+    // 3. Solo se almacenan imágenes y PDFs
+    if (!msg.hasMedia) return;
+    if (msg.type !== 'image' && msg.type !== 'document') return;
+
     const remitente = msg.author || msg.from;
+    const nombreDesdeCaption = (msg.body || '').trim();
 
     try {
-        // ── CASO 1: Mensaje de TEXTO ──
-        if (!msg.hasMedia && msg.body && msg.body.trim().length > 0) {
-            const textoLimpio = msg.body.trim();
-
-            if (colaPendientes.tienePendientes(remitente)) {
-                console.log(`\n${'='.repeat(60)}`);
-                console.log(`[+] Nombre recibido en mensaje de texto de: ${remitente}`);
-                console.log(`    Nombre del cliente: "${textoLimpio}"`);
-                console.log(`${'='.repeat(60)}`);
-
-                const resultados = await colaPendientes.resolver(remitente, textoLimpio);
-
-                if (resultados.length === 0) {
-                    console.warn(`[index] El comprobante de ${remitente} se descartó (no había archivo válido para procesar).`);
-                }
-
-                for (const resultado of resultados) {
-                    if (resultado.exito) {
-                        console.log('Datos extraídos con éxito:');
-                        console.dir(resultado.datos, { depth: null, colors: true });
-                    } else if (resultado.rutaUsada !== 'ignorado') {
-                        console.warn(`[!] Procesamiento con problemas → ${resultado.nombreArchivo}`);
-                    }
-
-                    // TODO: Enviar resultado.datos a API o base de datos PHP
-                }
-            } else {
-                console.log(`[index] Mensaje de texto ignorado (sin comprobante pendiente) de ${remitente}: "${textoLimpio}"`);
-            }
+        const media = await msg.downloadMedia();
+        if (!media || !media.mimetype) {
+            console.warn(`[index] Descarga sin contenido o mimetype para ${remitente} (type=${msg.type})`);
             return;
         }
 
-        // Si no tiene media o es mensaje vacío, ignorar
-        if (!msg.hasMedia) return;
-
-        // Solo permitir mensajes de tipo imagen o documento (ignorar stickers, etc.)
-        if (msg.type !== 'image' && msg.type !== 'document') return;
-
-        // ── CASO 2: Mensaje con MULTIMEDIA (Solo JPG, PNG o PDF) ──
-        // Registramos INMEDIATAMENTE en la cola de forma síncrona
-        // Pasamos la promesa de descarga para evitar condiciones de carrera si el texto llega casi simultáneo
-        const promesaMedia = msg.downloadMedia()
-            .then(media => {
-                if (!media || !media.mimetype) {
-                    console.warn(`[index] Descarga sin contenido o mimetype para ${remitente} (type=${msg.type})`);
-                    return null;
-                }
-                const mimetype = media.mimetype.toLowerCase();
-                const MIMETYPES_VALIDOS = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-                if (!MIMETYPES_VALIDOS.includes(mimetype)) {
-                    console.warn(`[index] Mimetype descartado para ${remitente}: ${mimetype}`);
-                    return null;
-                }
-                return media;
-            })
-            .catch(err => {
-                console.error(`[index] Error al descargar media de ${remitente}:`, err.message || err);
-                return null;
-            });
+        const mimetype = media.mimetype.toLowerCase();
+        const esImagen = mimetype.startsWith('image/');
+        const esPdf = mimetype === 'application/pdf';
+        if (!esImagen && !esPdf) {
+            console.warn(`[index] Mimetype descartado para ${remitente}: ${mimetype}`);
+            return;
+        }
 
         console.log(`\n${'='.repeat(60)}`);
         console.log(`[+] Comprobante recibido de: ${remitente}`);
-        console.log(`    Tipo mensaje: ${msg.type}`);
-        console.log(`    (Registrado en cola; esperando o vinculando nombre del cliente)`);
+        console.log(`    Tipo: ${msg.type} (${mimetype})`);
+        console.log(`    Nombre (caption): "${nombreDesdeCaption || '(vacío)'}"`);
         console.log(`${'='.repeat(60)}`);
 
-        colaPendientes.registrar(remitente, promesaMedia);
+        const resultado = await procesarMedia(media, nombreDesdeCaption || null);
 
-        /*
-        Pendientes por implementar:
-        - Sincronización con OneDrive
-        - Categorización: conciliado vs. no conciliado
-        */
-
+        if (resultado.exito) {
+            console.log(`[index] Archivo almacenado: ${resultado.nombreArchivo}`);
+        } else if (resultado.rutaUsada !== 'ignorado') {
+            console.warn(`[index] No se pudo almacenar el archivo de ${remitente}`);
+        }
     } catch (error) {
-        console.error('Error al procesar el mensaje:', error.message);
+        console.error(`[index] Error al procesar media de ${remitente}:`, error.message || error);
     }
 });
 
 client.initialize()
-    .catch((err) => {
+    .catch(async (err) => {
         console.error('[WhatsApp] Error al inicializar el cliente:', err.message || err);
         console.error('[WhatsApp] Detalle:', err.stack || err);
+        try {
+            await client.destroy();
+        } catch (errorCierre) {
+            console.warn('[WhatsApp] No se pudo cerrar el cliente:', errorCierre.message || errorCierre);
+        }
         process.exit(1);
     });
