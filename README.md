@@ -9,7 +9,7 @@ renombrados con el caption del mensaje.
 - Descarga **imágenes** (`image/*`) y **PDFs** (`application/pdf`).
 - Convierte cualquier imagen a PDF.
 - Renombra el archivo con el **caption del mismo mensaje**.
-- Guarda todo en `comprobantes/` como PDF.
+- Guarda todo en `comprobantes/YYYY-MM-DD/` como PDF, usando la fecha del mensaje.
 - Si no hay caption, usa `comprobante_<timestamp>.pdf`.
 - Si el nombre ya existe, agrega `_2`, `_3`, etc.
 - Ignora mensajes de texto, stickers, audios, videos y reacciones.
@@ -33,6 +33,10 @@ npm start
 ```
 
 Escanea el QR con WhatsApp la primera vez.
+
+Funciona en Linux y Windows. La dependencia `whatsapp-web.js` se instala desde GitHub por
+HTTPS (requiere Git instalado) y `.npmrc` permite que Puppeteer descargue Chrome durante
+`npm install`.
 
 ## Filtros
 
@@ -61,4 +65,5 @@ node scripts/probar-archivos.js /ruta/a/imagen.jpg "Nombre del cliente"
 node scripts/probar-archivos.js /ruta/a/comprobante.pdf "Nombre del cliente"
 ```
 
-Los PDFs generados quedan en `comprobantes/`.
+Los PDFs generados quedan en `comprobantes/YYYY-MM-DD/`, usando la fecha del mensaje en la
+zona horaria local.

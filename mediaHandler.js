@@ -17,26 +17,44 @@ if (!fs.existsSync(COMPROBANTES_DIR)) {
 }
 
 /**
- * Resuelve colisiones de nombres en el directorio de salida.
- * Si "Juan.pdf" ya existe, devuelve "Juan_2.pdf", etc.
+ * Formatea una fecha como YYYY-MM-DD usando la zona horaria local.
+ *
+ * @param {Date} fecha
+ * @returns {string}
+ */
+function formatearFechaLocal(fecha) {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+}
+
+/**
+ * Guarda el buffer con un nombre único dentro del directorio.
+ * Usa el flag 'wx' para no sobrescribir si dos mensajes llegan a la vez.
  *
  * @param {string} directorio
  * @param {string} nombreArchivo
- * @returns {string} Nombre de archivo único
+ * @param {Buffer} buffer
+ * @returns {{ nombreArchivo: string, ruta: string }}
  */
-function resolverNombreUnico(directorio, nombreArchivo) {
-    let ruta = path.join(directorio, nombreArchivo);
-    if (!fs.existsSync(ruta)) return nombreArchivo;
-
+function guardarArchivoUnico(directorio, nombreArchivo, buffer) {
     const ext = path.extname(nombreArchivo);
     const base = path.basename(nombreArchivo, ext);
+    let candidato = nombreArchivo;
     let contador = 2;
 
-    while (fs.existsSync(path.join(directorio, `${base}_${contador}${ext}`))) {
-        contador++;
+    while (true) {
+        const ruta = path.join(directorio, candidato);
+        try {
+            fs.writeFileSync(ruta, buffer, { flag: 'wx' });
+            return { nombreArchivo: candidato, ruta };
+        } catch (error) {
+            if (error.code !== 'EEXIST') throw error;
+            candidato = `${base}_${contador}${ext}`;
+            contador++;
+        }
     }
-
-    return `${base}_${contador}${ext}`;
 }
 
 /**
@@ -75,37 +93,47 @@ async function prepararComprobante(media) {
 }
 
 /**
- * Genera el nombre único y guarda el PDF en disco.
+ * Genera el nombre único, crea la carpeta diaria y guarda el PDF en disco.
  *
  * @param {Object} preparado - Objeto retornado por prepararComprobante
  * @param {string|null} nombreCliente - Nombre tomado del caption del mensaje
- * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string }>}
+ * @param {{ fechaRecepcion?: number|Date }} [opciones] - Fecha del mensaje; por defecto, ahora
+ * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string, fechaRecepcion: string }>}
  */
-async function guardarComprobante(preparado, nombreCliente) {
+async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
     const { bufferPdf, rutaUsada } = preparado;
+
+    const fechaRecibida = opciones.fechaRecepcion
+        ? new Date(opciones.fechaRecepcion)
+        : new Date();
+    const fechaRecepcion = Number.isNaN(fechaRecibida.getTime()) ? new Date() : fechaRecibida;
+    const fechaRecepcionStr = formatearFechaLocal(fechaRecepcion);
 
     if (rutaUsada === 'ignorado' || !bufferPdf) {
         return {
             exito: false,
             nombreArchivo: null,
             ruta: null,
-            rutaUsada: rutaUsada || 'ignorado'
+            rutaUsada: rutaUsada || 'ignorado',
+            fechaRecepcion: fechaRecepcionStr
         };
     }
 
-    const nombreBase = generarNombreArchivo(nombreCliente);
-    const nombreArchivo = resolverNombreUnico(COMPROBANTES_DIR, nombreBase);
-    const rutaArchivo = path.join(COMPROBANTES_DIR, nombreArchivo);
+    const carpetaDia = path.join(COMPROBANTES_DIR, fechaRecepcionStr);
 
     try {
-        fs.writeFileSync(rutaArchivo, bufferPdf);
-        console.log(`[mediaHandler] Guardado: ${nombreArchivo} (ruta: ${rutaUsada})`);
+        fs.mkdirSync(carpetaDia, { recursive: true });
+
+        const nombreBase = generarNombreArchivo(nombreCliente);
+        const { nombreArchivo, ruta: rutaArchivo } = guardarArchivoUnico(carpetaDia, nombreBase, bufferPdf);
+        console.log(`[mediaHandler] Guardado: ${fechaRecepcionStr}/${nombreArchivo} (ruta: ${rutaUsada})`);
 
         return {
             exito: true,
             nombreArchivo,
             ruta: rutaArchivo,
-            rutaUsada
+            rutaUsada,
+            fechaRecepcion: fechaRecepcionStr
         };
     } catch (saveError) {
         console.error('[mediaHandler] Error al guardar archivo final:', saveError.message);
@@ -113,7 +141,8 @@ async function guardarComprobante(preparado, nombreCliente) {
             exito: false,
             nombreArchivo: null,
             ruta: null,
-            rutaUsada
+            rutaUsada,
+            fechaRecepcion: fechaRecepcionStr
         };
     }
 }
@@ -123,11 +152,12 @@ async function guardarComprobante(preparado, nombreCliente) {
  *
  * @param {Object} media - Objeto de media de whatsapp-web.js (con .data y .mimetype)
  * @param {string|null} nombreCliente - Nombre tomado del caption del mensaje
- * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string }>}
+ * @param {{ fechaRecepcion?: number|Date }} [opciones] - Fecha del mensaje; por defecto, ahora
+ * @returns {Promise<{ exito: boolean, nombreArchivo: string|null, ruta: string|null, rutaUsada: string, fechaRecepcion: string }>}
  */
-async function procesarMedia(media, nombreCliente) {
+async function procesarMedia(media, nombreCliente, opciones = {}) {
     const preparado = await prepararComprobante(media);
-    return await guardarComprobante(preparado, nombreCliente);
+    return await guardarComprobante(preparado, nombreCliente, opciones);
 }
 
 module.exports = {

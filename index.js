@@ -160,10 +160,11 @@ client.on('message_create', async (msg) => {
         console.log(`    Nombre (caption): "${nombreDesdeCaption || '(vacío)'}"`);
         console.log(`${'='.repeat(60)}`);
 
-        const resultado = await procesarMedia(media, nombreDesdeCaption || null);
+        const fechaRecepcion = msg.timestamp ? new Date(msg.timestamp * 1000) : undefined;
+        const resultado = await procesarMedia(media, nombreDesdeCaption || null, { fechaRecepcion });
 
         if (resultado.exito) {
-            console.log(`[index] Archivo almacenado: ${resultado.nombreArchivo}`);
+            console.log(`[index] Archivo almacenado: ${resultado.ruta}`);
         } else if (resultado.rutaUsada !== 'ignorado') {
             console.warn(`[index] No se pudo almacenar el archivo de ${remitente}`);
         }

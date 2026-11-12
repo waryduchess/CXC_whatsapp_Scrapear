@@ -112,7 +112,7 @@ async function ejecutarPruebas() {
 
     console.log('\n' + '='.repeat(70));
     console.log(' PRUEBAS FINALIZADAS');
-    console.log(' Revisa la carpeta "comprobantes/" para ver los PDFs finales generados.');
+    console.log(' Revisa la carpeta "comprobantes/YYYY-MM-DD/" para ver los PDFs finales generados.');
     console.log('='.repeat(70));
 }
 

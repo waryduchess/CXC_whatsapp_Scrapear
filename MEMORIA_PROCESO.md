@@ -24,7 +24,7 @@ No se analiza el contenido ni se persiste en base de datos: solo se almacenan lo
   - Se descarga el archivo con `msg.downloadMedia()`.
   - Si es imagen (`image/*`) se convierte a PDF.
   - Si es PDF (`application/pdf`) se guarda tal cual.
-  - Se guarda en `comprobantes/` con nombre único.
+  - Se guarda en `comprobantes/YYYY-MM-DD/` (fecha del mensaje) con nombre único.
 - Tipos ignorados: texto, audio, video, stickers, reacciones y estados.
 
 ---
@@ -47,15 +47,17 @@ WhatsApp recibe media
 
 ---
 
-## 4. Nombrado de Archivos
+## 4. Carpetas y Nombrado de Archivos
 
 ```
-{CAPTION}.pdf
+comprobantes/{YYYY-MM-DD}/{CAPTION}.pdf
 ```
 
+- La carpeta diaria usa la **fecha del mensaje** (`msg.timestamp`) en la zona horaria local.
 - El nombre viene del **caption del mismo mensaje**.
 - Si el caption está vacío: `comprobante_{TIMESTAMP}.pdf`.
 - Caracteres no válidos para nombres de archivo se reemplazan por `-`.
+- Nombres válidos en Windows: se evitan nombres reservados (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) y se limita la longitud.
 - Si el nombre ya existe: `Cliente.pdf`, `Cliente_2.pdf`, `Cliente_3.pdf`, etc.
 
 ---
@@ -96,11 +98,11 @@ CXC_whatsapp_Scrapear/
 │   └── pdfService.js           # Conversión imagen → PDF
 ├── utils/
 │   └── validators.js           # Generación del nombre del archivo
-├── comprobantes/               # Salida (PDF)
+├── comprobantes/               # Salida (PDF) por fecha YYYY-MM-DD
 ├── scripts/
-│   ├── patch-wwebjs.js         # Patch de compatibilidad
 │   └── probar-archivos.js      # Prueba sin WhatsApp
 ├── package.json
+├── .npmrc                      # Permisos de npm para git y Puppeteer
 └── MEMORIA_PROCESO.md          # Este archivo
 ```
 
