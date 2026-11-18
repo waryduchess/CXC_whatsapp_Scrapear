@@ -210,7 +210,61 @@ CXC_whatsapp_Scrapear/
 
 ---
 
-## 9. Pendientes / Futuro
+## 9. OneDrive — Espejo de comprobantes
 
-- [ ] Sincronización de la carpeta local con OneDrive.
+El bot espeja cada comprobante a una carpeta local de OneDrive manteniendo la misma
+estructura `Año/Mes/Día/Grupo/archivo.pdf`.
+
+### Variables de entorno
+
+| Variable | Descripción |
+|---|---|
+| `COMPROBANTES_DIR` | Carpeta principal donde el bot guarda PDFs. Acepta `%VAR%`, `$VAR`, `${VAR}` y `~`. Si no se define, usa `comprobantes/` dentro del proyecto. |
+| `ONEDRIVE_DIR` | Carpeta **local** del cliente OneDrive Desktop. Si no se define, el espejo queda desactivado. |
+
+Ambas variables se resuelven en `services/rutas.js` antes de que arranque el bot.
+
+### Comportamiento
+
+- Si `COMPROBANTES_DIR` no es escribible → **el arranque falla** con mensaje claro.
+- Si `ONEDRIVE_DIR` no es escribible → **el bot arranca igual**; solo se loguea la advertencia.
+- Se rechaza la raíz de una unidad (`C:\`) y rutas UNC (`\\server\share`).
+- Se alerta si la ruta supera 240 caracteres (límite MAX_PATH de Windows).
+- Reintentos ante bloqueos de OneDrive o antivirus: 2s → 5s → 15s → 60s → 300s.
+- Códigos reintentados: `EBUSY`, `EPERM`, `EACCES`, `ENOENT`, `EPIPE`, `EIO`.
+- No se recopia si el destino ya existe con el mismo tamaño y hash MD5.
+- Escritura atómica: archivo temporal + `rename` en la misma carpeta.
+- No se sincronizan: `data/`, `config/`, `logs/`, `.env`, `node_modules/`.
+
+### Módulos
+
+| Módulo | Responsabilidad |
+|---|---|
+| `services/rutas.js` | Expansión de vars, validación de rutas, resolución de `COMPROBANTES_DIR` / `ONEDRIVE_DIR` |
+| `services/espejo.js` | `espejarArchivo()` y `sincronizarTodo()` con reintentos y hash |
+| `scripts/sincronizar-onedrive.js` | CLI para espejar en batch (`--aplicar` o dry-run) |
+
+### Configuración recomendada en Windows
+
+```env
+COMPROBANTES_DIR=C:\CXC\comprobantes
+ONEDRIVE_DIR=%OneDrive%\Comprobantes
+```
+
+Requisitos previos en OneDrive:
+1. Clic derecho en la carpeta → **Mantener siempre en este dispositivo**.
+2. Desactivar **Archivos a petición** para evitar placeholders (`ENOENT`/`EIO`).
+
+### Scripts npm
+
+```bash
+npm run onedrive:dry    # dry-run: lista qué se copiaría
+npm run onedrive:sync   # copia todo
+```
+
+---
+
+## 10. Pendientes / Futuro
+
+- [x] Sincronización de la carpeta local con OneDrive.
 - [ ] Categorización de comprobantes (conciliado vs. no conciliado).
