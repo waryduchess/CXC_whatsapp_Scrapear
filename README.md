@@ -9,7 +9,7 @@ organizados por grupo o chat, con el remitente y el caption del mensaje en el no
 - Descarga **imágenes** (`image/*`) y **PDFs** (`application/pdf`).
 - Convierte cualquier imagen a PDF de una sola página, ajustada al tamaño de hoja y comprimida.
 - Renombra el archivo como `<remitente> - <caption>.pdf`.
-- Guarda todo en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/`, usando la fecha del mensaje.
+- Guarda todo en `comprobantes/AAAA/MM.-MES/DD MES/<Grupo o Chat>/`, usando la fecha del mensaje.
 - Los grupos usan su nombre; si hay nombres repetidos, agrega los últimos 6 dígitos del ID.
 - Los chats privados usan el nombre del contacto o su número.
 - Si no hay caption, usa `<remitente>.pdf`; sin remitente, `comprobante_<timestamp>.pdf`.
@@ -166,6 +166,10 @@ node scripts/probar-archivos.js /ruta/a/comprobante.pdf "Nombre del cliente"
 node scripts/probar-archivos.js /ruta/a/comprobante.pdf "Hotel Haba" application/pdf "Pagos choferes" "omar"
 ```
 
-Los PDFs generados quedan en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/`, usando la fecha del
-mensaje en la zona horaria local. Si no se pasa grupo ni remitente, se guarda en la raíz de
-la fecha como antes.
+Los PDFs generados quedan en `comprobantes/AAAA/MM.-MES/DD MES/<Grupo o Chat>/`, usando la
+fecha del mensaje en la zona horaria local. Ejemplo:
+`comprobantes/2026/03.-MARZO/01 MARZO/Pagos choferes/omar - gasolina.pdf`.
+Si no se pasa grupo ni remitente, se guarda directo en la carpeta del día.
+
+La estructura anterior `comprobantes/YYYY-MM-DD/` se sigue leyendo desde el panel para no perder
+los archivos ya guardados, pero los comprobantes nuevos usan año/mes/día.

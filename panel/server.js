@@ -10,6 +10,14 @@ const { encolarAnalisis, obtenerEstadoIA, resolverRutaComprobante } = require('.
 const datosComprobantes = require('../services/datosComprobantes');
 const iaService = require('../services/iaService');
 const {
+    rutaFecha,
+    segmentosFecha,
+    fechaDesdeSegmentos,
+    esCarpetaAnio,
+    esCarpetaMes,
+    esCarpetaDia
+} = require('../utils/fechas');
+const {
     validarConfig,
     guardarConfig,
     aplicarConfig,
@@ -150,46 +158,88 @@ function leerCuerpoJson(req, limite = 32768) {
 }
 
 function listarFechas() {
+    const fechas = new Set();
+
     try {
-        return fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })
-            .filter(entrada => entrada.isDirectory() && RE_FECHA.test(entrada.name))
-            .map(entrada => entrada.name)
-            .sort((a, b) => b.localeCompare(a));
+        for (const anio of fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })) {
+            if (!anio.isDirectory() || !esCarpetaAnio(anio.name)) continue;
+            const rutaAnio = path.join(COMPROBANTES_DIR, anio.name);
+
+            for (const mes of fs.readdirSync(rutaAnio, { withFileTypes: true })) {
+                if (!mes.isDirectory() || !esCarpetaMes(mes.name)) continue;
+                const rutaMes = path.join(rutaAnio, mes.name);
+
+                for (const dia of fs.readdirSync(rutaMes, { withFileTypes: true })) {
+                    if (!dia.isDirectory() || !esCarpetaDia(dia.name)) continue;
+                    const fecha = fechaDesdeSegmentos(anio.name, mes.name, dia.name);
+                    if (fecha) fechas.add(fecha);
+                }
+            }
+        }
     } catch (error) {
-        console.error('[panel] No se pudo leer la carpeta de comprobantes:', error.message || error);
-        return [];
+        if (error.code !== 'ENOENT') {
+            console.error('[panel] No se pudo leer la estructura por año/mes/día:', error.message || error);
+        }
     }
+
+    // Compatibilidad con la estructura anterior YYYY-MM-DD.
+    try {
+        for (const entrada of fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })) {
+            if (entrada.isDirectory() && RE_FECHA.test(entrada.name)) {
+                fechas.add(entrada.name);
+            }
+        }
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            console.error('[panel] No se pudo leer la carpeta de comprobantes:', error.message || error);
+        }
+    }
+
+    return [...fechas].sort((a, b) => b.localeCompare(a));
 }
 
 function listarArchivos(fecha) {
-    const carpeta = path.join(COMPROBANTES_DIR, fecha);
-    try {
-        const entradas = fs.readdirSync(carpeta, { withFileTypes: true });
-        const archivos = [];
+    const archivos = [];
+    const vistos = new Set();
 
-        const agregar = (grupo, directorio, nombre) => {
-            try {
-                const info = fs.statSync(path.join(directorio, nombre));
-                const rutaRelativa = [fecha, grupo, nombre].filter(Boolean).join('/');
-                archivos.push({
-                    fecha,
-                    grupo,
-                    nombre,
-                    rutaRelativa,
-                    tamano: info.size,
-                    mtime: info.mtimeMs,
-                    analisis: datosComprobantes.obtener(rutaRelativa)
-                });
-            } catch (error) {
-                return;
+    const agregar = (segmentos, grupo, directorio, nombre) => {
+        const clave = `${grupo || ''}/${nombre}`;
+        if (vistos.has(clave)) return;
+
+        try {
+            const info = fs.statSync(path.join(directorio, nombre));
+            vistos.add(clave);
+            const rutaRelativa = [...segmentos, grupo, nombre].filter(Boolean).join('/');
+            archivos.push({
+                fecha,
+                grupo,
+                nombre,
+                rutaRelativa,
+                tamano: info.size,
+                mtime: info.mtimeMs,
+                analisis: datosComprobantes.obtener(rutaRelativa)
+            });
+        } catch (error) {
+            return;
+        }
+    };
+
+    const listarCarpeta = (carpeta, segmentos) => {
+        let entradas;
+        try {
+            entradas = fs.readdirSync(carpeta, { withFileTypes: true });
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.error(`[panel] No se pudo leer ${carpeta}:`, error.message || error);
             }
-        };
+            return;
+        }
 
         for (const entrada of entradas) {
             if (entrada.name.startsWith('.')) continue;
 
             if (entrada.isFile() && RE_ARCHIVO.test(entrada.name)) {
-                agregar(null, carpeta, entrada.name);
+                agregar(segmentos, null, carpeta, entrada.name);
                 continue;
             }
 
@@ -208,17 +258,22 @@ function listarArchivos(fecha) {
 
             for (const subentrada of subentradas) {
                 if (!subentrada.isFile() || !RE_ARCHIVO.test(subentrada.name)) continue;
-                agregar(entrada.name, subcarpeta, subentrada.name);
+                agregar(segmentos, entrada.name, subcarpeta, subentrada.name);
             }
         }
+    };
 
-        return archivos.sort((a, b) => b.mtime - a.mtime);
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
-            console.error(`[panel] No se pudo leer la fecha ${fecha}:`, error.message || error);
-        }
-        return [];
+    const segmentos = segmentosFecha(fecha);
+    listarCarpeta(
+        path.join(COMPROBANTES_DIR, rutaFecha(fecha)),
+        [segmentos.anio, segmentos.mes, segmentos.dia]
+    );
+
+    if (RE_FECHA.test(fecha)) {
+        listarCarpeta(path.join(COMPROBANTES_DIR, fecha), [fecha]);
     }
+
+    return archivos.sort((a, b) => b.mtime - a.mtime);
 }
 
 function listarTodo() {
@@ -245,13 +300,10 @@ function decodificarSegmento(valor) {
     }
 }
 
-function resolverArchivo(fecha, grupoCodificado, nombreCodificado) {
-    if (!RE_FECHA.test(fecha)) return null;
-
+function resolverArchivoEnBase(carpetaFecha, grupoCodificado, nombreCodificado) {
     const nombre = decodificarSegmento(nombreCodificado);
     if (!nombre || !RE_ARCHIVO.test(nombre)) return null;
 
-    const carpetaFecha = path.resolve(COMPROBANTES_DIR, fecha);
     let carpetaDestino = carpetaFecha;
 
     if (grupoCodificado != null) {
@@ -267,6 +319,23 @@ function resolverArchivo(fecha, grupoCodificado, nombreCodificado) {
     }
 
     return ruta;
+}
+
+function resolverArchivo(fecha, grupoCodificado, nombreCodificado) {
+    if (!RE_FECHA.test(fecha)) return null;
+
+    const carpetaNueva = path.resolve(COMPROBANTES_DIR, rutaFecha(fecha));
+    const candidata = resolverArchivoEnBase(carpetaNueva, grupoCodificado, nombreCodificado);
+    if (candidata && fs.existsSync(candidata)) {
+        return candidata;
+    }
+
+    // Compatibilidad con la estructura anterior YYYY-MM-DD.
+    return resolverArchivoEnBase(
+        path.resolve(COMPROBANTES_DIR, fecha),
+        grupoCodificado,
+        nombreCodificado
+    );
 }
 
 function descargarArchivo(res, ruta, opciones = {}) {

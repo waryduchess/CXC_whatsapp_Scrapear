@@ -18,6 +18,14 @@ const fs = require('fs');
 const path = require('path');
 const iaService = require('../services/iaService');
 const datosComprobantes = require('../services/datosComprobantes');
+const {
+    rutaFecha,
+    segmentosFecha,
+    fechaDesdeSegmentos,
+    esCarpetaAnio,
+    esCarpetaMes,
+    esCarpetaDia
+} = require('../utils/fechas');
 
 const COMPROBANTES_DIR = path.join(__dirname, '..', 'comprobantes');
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,58 +63,100 @@ function leerArgumentos(argv) {
 }
 
 function listarArchivos(fecha) {
-    const carpeta = path.join(COMPROBANTES_DIR, fecha);
     const archivos = [];
+    const vistos = new Set();
 
-    let entradas;
-    try {
-        entradas = fs.readdirSync(carpeta, { withFileTypes: true });
-    } catch (error) {
-        return archivos;
-    }
+    const agregar = (segmentos, grupo, directorio, nombre) => {
+        const clave = `${grupo || ''}/${nombre}`;
+        if (vistos.has(clave)) return;
+        vistos.add(clave);
+        archivos.push({
+            rutaRelativa: [...segmentos, grupo, nombre].filter(Boolean).join('/'),
+            ruta: path.join(directorio, nombre)
+        });
+    };
 
-    for (const entrada of entradas) {
-        if (entrada.isFile() && RE_ARCHIVO.test(entrada.name)) {
-            archivos.push({
-                rutaRelativa: `${fecha}/${entrada.name}`,
-                ruta: path.join(carpeta, entrada.name)
-            });
-        } else if (entrada.isDirectory()) {
-            const subcarpeta = path.join(carpeta, entrada.name);
-            let hijos = [];
-            try {
-                hijos = fs.readdirSync(subcarpeta, { withFileTypes: true });
-            } catch (error) {
-                continue;
-            }
-            for (const hijo of hijos) {
-                if (!hijo.isFile() || !RE_ARCHIVO.test(hijo.name)) continue;
-                archivos.push({
-                    rutaRelativa: `${fecha}/${entrada.name}/${hijo.name}`,
-                    ruta: path.join(subcarpeta, hijo.name)
-                });
+    const listarCarpeta = (carpeta, segmentos) => {
+        let entradas;
+        try {
+            entradas = fs.readdirSync(carpeta, { withFileTypes: true });
+        } catch (error) {
+            return;
+        }
+
+        for (const entrada of entradas) {
+            if (entrada.name.startsWith('.')) continue;
+
+            if (entrada.isFile() && RE_ARCHIVO.test(entrada.name)) {
+                agregar(segmentos, null, carpeta, entrada.name);
+            } else if (entrada.isDirectory()) {
+                const subcarpeta = path.join(carpeta, entrada.name);
+                let hijos = [];
+                try {
+                    hijos = fs.readdirSync(subcarpeta, { withFileTypes: true });
+                } catch (error) {
+                    continue;
+                }
+                for (const hijo of hijos) {
+                    if (!hijo.isFile() || !RE_ARCHIVO.test(hijo.name)) continue;
+                    agregar(segmentos, entrada.name, subcarpeta, hijo.name);
+                }
             }
         }
+    };
+
+    const segmentos = segmentosFecha(fecha);
+    listarCarpeta(
+        path.join(COMPROBANTES_DIR, rutaFecha(fecha)),
+        [segmentos.anio, segmentos.mes, segmentos.dia]
+    );
+
+    if (RE_FECHA.test(fecha)) {
+        listarCarpeta(path.join(COMPROBANTES_DIR, fecha), [fecha]);
     }
 
     return archivos;
 }
 
-function listarTodo(fecha) {
-    if (fecha) return listarArchivos(fecha);
+function listarFechas() {
+    const fechas = new Set();
 
-    let fechas;
     try {
-        fechas = fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })
-            .filter(entrada => entrada.isDirectory() && RE_FECHA.test(entrada.name))
-            .map(entrada => entrada.name)
-            .sort();
+        for (const anio of fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })) {
+            if (!anio.isDirectory() || !esCarpetaAnio(anio.name)) continue;
+            const rutaAnio = path.join(COMPROBANTES_DIR, anio.name);
+
+            for (const mes of fs.readdirSync(rutaAnio, { withFileTypes: true })) {
+                if (!mes.isDirectory() || !esCarpetaMes(mes.name)) continue;
+                const rutaMes = path.join(rutaAnio, mes.name);
+
+                for (const dia of fs.readdirSync(rutaMes, { withFileTypes: true })) {
+                    if (!dia.isDirectory() || !esCarpetaDia(dia.name)) continue;
+                    const fecha = fechaDesdeSegmentos(anio.name, mes.name, dia.name);
+                    if (fecha) fechas.add(fecha);
+                }
+            }
+        }
     } catch (error) {
-        console.error('No se pudo leer la carpeta de comprobantes:', error.message);
-        return [];
+        // Sin estructura nueva todavía.
     }
 
-    return fechas.flatMap(listarArchivos);
+    try {
+        for (const entrada of fs.readdirSync(COMPROBANTES_DIR, { withFileTypes: true })) {
+            if (entrada.isDirectory() && RE_FECHA.test(entrada.name)) {
+                fechas.add(entrada.name);
+            }
+        }
+    } catch (error) {
+        console.error('No se pudo leer la carpeta de comprobantes:', error.message);
+    }
+
+    return [...fechas].sort();
+}
+
+function listarTodo(fecha) {
+    if (fecha) return listarArchivos(fecha);
+    return listarFechas().flatMap(listarArchivos);
 }
 
 async function analizar({ rutaRelativa, ruta }) {

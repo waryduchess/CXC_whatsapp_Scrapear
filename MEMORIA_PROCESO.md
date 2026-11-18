@@ -27,7 +27,7 @@ No se analiza el contenido ni se persiste en base de datos: solo se almacenan lo
   - Se descarga el archivo con `msg.downloadMedia()`.
   - Si es imagen (`image/*`) se convierte a PDF.
   - Si es PDF (`application/pdf`) se guarda tal cual.
-  - Se guarda en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/` (fecha del mensaje) con nombre único.
+  - Se guarda en `comprobantes/AAAA/MM.-MES/DD MES/<Grupo o Chat>/` (fecha del mensaje) con nombre único.
   - Se reacciona al mensaje original con un emoji de confirmación (opcional, con tope diario).
 - Tipos ignorados: texto, audio, video, stickers, reacciones y estados.
 
@@ -54,10 +54,15 @@ WhatsApp recibe media
 ## 4. Carpetas y Nombrado de Archivos
 
 ```
-comprobantes/{YYYY-MM-DD}/{GRUPO_O_CHAT}/{REMITENTE} - {CAPTION}.pdf
+comprobantes/{AAAA}/{MM.-MES}/{DD MES}/{GRUPO_O_CHAT}/{REMITENTE} - {CAPTION}.pdf
 ```
 
+Ejemplo: `comprobantes/2026/03.-MARZO/01 MARZO/Pagos choferes/omar - gasolina.pdf`.
+
 - La carpeta diaria usa la **fecha del mensaje** (`msg.timestamp`) en la zona horaria local.
+- El mes se escribe con dos dígitos, punto, guion y nombre en mayúsculas (`03.-MARZO`).
+- El día se escribe con dos dígitos, espacio y nombre del mes (`01 MARZO`).
+- La estructura anterior `comprobantes/YYYY-MM-DD/` se mantiene legible para archivos viejos.
 - La subcarpeta usa el **nombre del grupo**; si no se resuelve, su ID.
 - En chats privados, la subcarpeta usa el nombre del contacto (`contact.name`, luego `contact.pushname`) o su número.
 - Si dos grupos comparten nombre, se agrega un sufijo con los últimos 6 dígitos del ID del grupo.
@@ -118,15 +123,19 @@ CXC_whatsapp_Scrapear/
 │   ├── filtroMensajes.js       # Filtro principal
 │   ├── filtroNumeros.js        # Filtro de números
 │   ├── reacciones.js           # Confirmación con emoji y registro diario
+│   ├── iaService.js            # Extracción de datos con DeepSeek
+│   ├── datosComprobantes.js    # Almacén JSON de datos extraídos
+│   ├── colaIA.js               # Cola de análisis y eventos
 │   └── pdfService.js           # Conversión imagen → PDF
 ├── utils/
-│   └── validators.js           # Nombres de archivo y carpetas
+│   ├── validators.js           # Nombres de archivo y carpetas
+│   └── fechas.js               # Segmentos Año/Mes/Día en español
 ├── windows/
 │   ├── lanzador.vbs            # Arranque silencioso y apertura del panel
 │   ├── instalar-windows.ps1    # Instalación y accesos directos
 │   ├── instalar-windows.bat    # Lanzador del instalador
 │   └── cxc-whatsapp.ico        # Icono de los accesos de Escritorio e Inicio
-├── comprobantes/               # Salida (PDF) por fecha y grupo/chat
+├── comprobantes/               # Salida (PDF) por año/mes/día y grupo/chat
 ├── scripts/
 │   └── probar-archivos.js      # Prueba sin WhatsApp
 ├── package.json

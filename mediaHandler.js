@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { imagenAPdf } = require('./services/pdfService');
 const { generarNombreComprobante, sanitizarNombreCarpeta } = require('./utils/validators');
+const { rutaFecha, segmentosFecha } = require('./utils/fechas');
 
 // Carpeta de salida — todo se guarda como PDF
 const COMPROBANTES_DIR = path.join(__dirname, 'comprobantes');
@@ -126,7 +127,7 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
         };
     }
 
-    const carpetaDia = path.join(COMPROBANTES_DIR, fechaRecepcionStr);
+    const carpetaDia = path.join(COMPROBANTES_DIR, rutaFecha(fechaRecepcion));
     const carpetaDestino = carpetaGrupo ? path.join(carpetaDia, carpetaGrupo) : carpetaDia;
 
     try {
@@ -134,7 +135,14 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
 
         const nombreBase = generarNombreComprobante(nombreCliente, remitente);
         const { nombreArchivo, ruta: rutaArchivo } = guardarArchivoUnico(carpetaDestino, nombreBase, bufferPdf);
-        const rutaRelativa = [fechaRecepcionStr, carpetaGrupo, nombreArchivo].filter(Boolean).join('/');
+        const segmentos = segmentosFecha(fechaRecepcion);
+        const rutaRelativa = [
+            segmentos.anio,
+            segmentos.mes,
+            segmentos.dia,
+            carpetaGrupo,
+            nombreArchivo
+        ].filter(Boolean).join('/');
         console.log(`[mediaHandler] Guardado: ${rutaRelativa} (ruta: ${rutaUsada})`);
 
         return {
