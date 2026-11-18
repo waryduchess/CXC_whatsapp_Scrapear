@@ -1,7 +1,7 @@
 # Memoria del Proceso — Almacenamiento de Comprobantes vía WhatsApp
 
 > Documento vivo con las decisiones y la arquitectura actual del sistema.
-> Última actualización: 2026-11-12
+> Última actualización: 2026-11-18
 
 ---
 
@@ -28,6 +28,7 @@ No se analiza el contenido ni se persiste en base de datos: solo se almacenan lo
   - Si es imagen (`image/*`) se convierte a PDF.
   - Si es PDF (`application/pdf`) se guarda tal cual.
   - Se guarda en `comprobantes/YYYY-MM-DD/<Grupo o Chat>/` (fecha del mensaje) con nombre único.
+  - Se reacciona al mensaje original con un emoji de confirmación (opcional, con tope diario).
 - Tipos ignorados: texto, audio, video, stickers, reacciones y estados.
 
 ---
@@ -100,7 +101,8 @@ comprobantes/{YYYY-MM-DD}/{GRUPO_O_CHAT}/{REMITENTE} - {CAPTION}.pdf
 CXC_whatsapp_Scrapear/
 ├── .env                        # Filtros iniciales y PANEL_PORT
 ├── config/
-│   └── filtros.json            # Filtros guardados desde el panel (prioridad sobre .env)
+│   ├── filtros.json            # Filtros guardados desde el panel (prioridad sobre .env)
+│   └── reacciones.json         # Registro diario de reacciones enviadas
 ├── index.js                    # Punto de entrada: WhatsApp, panel y watchdog
 ├── mediaHandler.js             # Convierte a PDF y guarda el archivo
 ├── ecosystem.config.js         # Configuración de PM2
@@ -115,6 +117,7 @@ CXC_whatsapp_Scrapear/
 │   ├── filtroGrupos.js         # Resolución de grupos
 │   ├── filtroMensajes.js       # Filtro principal
 │   ├── filtroNumeros.js        # Filtro de números
+│   ├── reacciones.js           # Confirmación con emoji y registro diario
 │   └── pdfService.js           # Conversión imagen → PDF
 ├── utils/
 │   └── validators.js           # Nombres de archivo y carpetas
@@ -141,6 +144,7 @@ CXC_whatsapp_Scrapear/
 | `services/estado.js` | Mantener el estado compartido y emitir eventos |
 | `services/logger.js` | Guardar los últimos registros y emitirlos en vivo |
 | `services/configFiltros.js` | Validar, guardar y aplicar `config/filtros.json` |
+| `services/reacciones.js` | Confirmar con emoji, cola con retraso, dedupe y tope diario |
 | `services/carpetas.js` | Resolver grupo/chat y sufijos para nombres repetidos |
 | `services/pdfService.js` | `imagenAPdf(buffer, mimetype)` y `normalizarImagen` |
 | `utils/validators.js` | `generarNombreComprobante(caption, remitente)` y `sanitizarNombreCarpeta` |
@@ -174,6 +178,11 @@ CXC_whatsapp_Scrapear/
   iniciar sesión, no antes del login.
 - El lanzador `windows\lanzador.vbs` verifica `/api/salud`, inicia o recarga PM2 y abre el
   panel en Chrome o Edge; si no existen, usa el navegador predeterminado.
+- `services/reacciones.js` reacciona al mensaje original cuando el comprobante se guarda.
+  Usa `msg.react()` sobre el mensaje original (no sobre el clon de identidad telefónica),
+  una cola secuencial con retraso aleatorio y un registro diario en `config/reacciones.json`.
+  Variables: `REACCION_ACTIVA`, `REACCION_EMOJI`, `REACCION_RETRASO_MS`, `REACCION_MAX_DIA`
+  y `REACCION_MAX_EDAD_MIN`. Un fallo de reacción nunca afecta el guardado.
 
 ---
 

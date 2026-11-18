@@ -14,6 +14,7 @@ organizados por grupo o chat, con el remitente y el caption del mensaje en el no
 - Los chats privados usan el nombre del contacto o su número.
 - Si no hay caption, usa `<remitente>.pdf`; sin remitente, `comprobante_<timestamp>.pdf`.
 - Si el nombre ya existe, agrega `_2`, `_3`, etc.
+- Reacciona con un emoji al mensaje original cuando el comprobante se guarda (configurable).
 - Ignora mensajes de texto, stickers, audios, videos y reacciones.
 
 No usa IA ni base de datos: solo almacena los archivos recibidos.
@@ -109,6 +110,25 @@ FILTRO_MODO=todos
 
 El tamaño de página de las imágenes convertidas se controla con `PDF_PAGINA` en `.env`:
 `A4` (por defecto) o `LETTER`.
+
+## Confirmación con reacción
+
+Cuando un comprobante se guarda, el bot reacciona al mensaje original con un emoji para
+que el remitente sepa que fue recibido. Se controla desde `.env`:
+
+```env
+REACCION_ACTIVA=true
+REACCION_EMOJI=✅
+REACCION_RETRASO_MS=1500
+REACCION_MAX_DIA=200
+REACCION_MAX_EDAD_MIN=10
+```
+
+- La reacción se envía en una cola con retraso aleatorio (entre el valor base y el doble).
+- Solo reacciona a comprobantes guardados; si falla la reacción, el archivo ya quedó guardado.
+- No repite reacciones sobre el mismo mensaje: el registro diario vive en `config/reacciones.json`.
+- Omite mensajes más antiguos que `REACCION_MAX_EDAD_MIN` y respeta el tope diario.
+- `REACCION_MAX_DIA=0` o `REACCION_ACTIVA=false` desactivan la función.
 
 ## Prueba sin WhatsApp
 

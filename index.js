@@ -9,6 +9,7 @@ const { procesarMedia } = require('./mediaHandler'); // 2. Importar el orquestad
 const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
 const { resolverCarpetaChat } = require('./services/carpetas');
+const { confirmarMensaje } = require('./services/reacciones');
 const { estado, actualizarEstado, eventos } = require('./services/estado');
 const { iniciarPanel } = require('./panel/server');
 const { cargarConfig, configDesdeEntorno } = require('./services/configFiltros');
@@ -402,6 +403,11 @@ client.on('message_create', async (msg) => {
                 fecha: resultado.fechaRecepcion,
                 nombre: resultado.nombreArchivo,
                 ruta: resultado.ruta,
+                grupo: resultado.grupo,
+                remitente: resultado.remitente
+            });
+
+            confirmarMensaje(msg, {
                 grupo: resultado.grupo,
                 remitente: resultado.remitente
             });

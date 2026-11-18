@@ -82,6 +82,7 @@ comprobantes/
 
 # Configuración local de filtros guardada desde el panel
 config/filtros.json
+config/reacciones.json
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
