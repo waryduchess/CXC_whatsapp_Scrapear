@@ -1158,9 +1158,11 @@ function abrirDatosIA(archivo) {
         termino.textContent = etiqueta;
         const valor = document.createElement('dd');
         const contenido = datos?.[campo];
+        const sinDato = contenido === null || contenido === undefined || contenido === '';
         valor.textContent = campo === 'monto'
-            ? (contenido === null || contenido === undefined ? '-' : `$${formatearMonto(contenido)}`)
-            : (contenido || '-');
+            ? (sinDato ? '—' : `$${formatearMonto(contenido)}`)
+            : (sinDato ? '—' : contenido);
+        if (sinDato) valor.classList.add('sin-dato');
         el.datosLista.append(termino, valor);
     }
 
