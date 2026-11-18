@@ -211,6 +211,7 @@ function listarArchivos(fecha) {
             const info = fs.statSync(path.join(directorio, nombre));
             vistos.add(clave);
             const rutaRelativa = [...segmentos, grupo, nombre].filter(Boolean).join('/');
+            const analisis = datosComprobantes.obtener(rutaRelativa);
             archivos.push({
                 fecha,
                 grupo,
@@ -218,7 +219,8 @@ function listarArchivos(fecha) {
                 rutaRelativa,
                 tamano: info.size,
                 mtime: info.mtimeMs,
-                analisis: datosComprobantes.obtener(rutaRelativa)
+                impreso: Boolean(analisis?.impreso),
+                analisis
             });
         } catch (error) {
             return;
@@ -494,12 +496,14 @@ function manejarSSE(req, res) {
     const alArchivo = (archivo) => enviar('archivo', archivo);
     const alIa = (datos) => enviar('ia', datos);
     const alDatos = (datos) => enviar('datos', datos);
+    const alImpreso = (datos) => enviar('impreso', datos);
 
     eventos.on('estado', alEstado);
     eventos.on('log', alLog);
     eventos.on('archivo', alArchivo);
     eventos.on('ia', alIa);
     eventos.on('datos', alDatos);
+    eventos.on('impreso', alImpreso);
 
     const latido = setInterval(() => {
         if (res.writableEnded) return;
@@ -517,6 +521,7 @@ function manejarSSE(req, res) {
         eventos.off('archivo', alArchivo);
         eventos.off('ia', alIa);
         eventos.off('datos', alDatos);
+        eventos.off('impreso', alImpreso);
     });
 }
 
@@ -707,6 +712,41 @@ async function manejarApi(req, res, url, puerto, opciones) {
             total: archivos.length,
             estado: obtenerEstadoIA()
         });
+    }
+
+    if (pathname === '/api/comprobantes/impreso' && req.method === 'POST') {
+        if (!origenPermitido(req, puerto)) {
+            return responderJson(res, 403, { ok: false, error: 'Origen no permitido' });
+        }
+
+        let datos;
+        try {
+            datos = await leerCuerpoJson(req);
+        } catch (error) {
+            return responderJson(res, error.status || 400, { ok: false, error: error.message });
+        }
+
+        const rutaRelativa = datosComprobantes.normalizarRuta(datos?.rutaRelativa);
+        if (!rutaRelativa) {
+            return responderJson(res, 400, { ok: false, error: 'Falta la ruta del comprobante' });
+        }
+
+        try {
+            resolverRutaComprobante(rutaRelativa);
+        } catch (error) {
+            return responderJson(res, 400, { ok: false, error: error.message });
+        }
+
+        const impreso = datos?.impreso !== false;
+        let registro;
+        try {
+            registro = datosComprobantes.marcarImpreso(rutaRelativa, impreso);
+        } catch (error) {
+            return responderJson(res, 500, { ok: false, error: 'No se pudo guardar la marca de impresión' });
+        }
+
+        eventos.emit('impreso', { rutaRelativa, impreso: registro.impreso });
+        return responderJson(res, 200, { ok: true, rutaRelativa, impreso: registro.impreso });
     }
 
     if (pathname === '/api/comprobantes' && req.method === 'GET') {

@@ -135,10 +135,39 @@ function crearAlmacen(opciones = {}) {
         if (!clave) throw new Error('Ruta relativa vacía');
 
         const datos = leer();
+        const previo = datos.registros[clave];
+        const nuevo = { ...registro };
+
+        // La marca de impresión es independiente del análisis de IA: se conserva
+        // cuando la cola vuelve a guardar el registro.
+        if (nuevo.impreso === undefined && previo?.impreso !== undefined) {
+            nuevo.impreso = previo.impreso;
+            nuevo.impresoEn = previo.impresoEn ?? null;
+        }
+
         datos.registros[clave] = {
-            ...registro,
+            ...nuevo,
             rutaRelativa: clave,
             actualizadoEn: new Date().toISOString()
+        };
+        guardar(datos);
+        return datos.registros[clave];
+    }
+
+    function marcarImpreso(rutaRelativa, impreso = true) {
+        const clave = normalizarRuta(rutaRelativa);
+        if (!clave) throw new Error('Ruta relativa vacía');
+
+        const datos = leer();
+        const previo = datos.registros[clave] || { datos: null };
+        const ahora = new Date().toISOString();
+
+        datos.registros[clave] = {
+            ...previo,
+            impreso: Boolean(impreso),
+            impresoEn: impreso ? ahora : null,
+            rutaRelativa: clave,
+            actualizadoEn: ahora
         };
         guardar(datos);
         return datos.registros[clave];
@@ -179,8 +208,10 @@ function crearAlmacen(opciones = {}) {
     function resumen() {
         const conteo = { total: 0, ok: 0, incompleto: 0, error: 0, pendiente: 0 };
         for (const registro of listar()) {
+            // Registros creados solo para marcar impresión no cuentan como IA pendiente.
+            if (!registro.estado) continue;
             conteo.total++;
-            const estado = registro.estado || 'pendiente';
+            const estado = registro.estado;
             if (conteo[estado] === undefined) {
                 conteo.pendiente++;
             } else {
@@ -195,6 +226,7 @@ function crearAlmacen(opciones = {}) {
         leer,
         obtener,
         guardarRegistro,
+        marcarImpreso,
         eliminarRegistro,
         renombrarRegistro,
         listar,
@@ -213,6 +245,7 @@ module.exports = {
     crearAlmacen,
     obtener: almacen.obtener,
     guardarRegistro: almacen.guardarRegistro,
+    marcarImpreso: almacen.marcarImpreso,
     eliminarRegistro: almacen.eliminarRegistro,
     renombrarRegistro: almacen.renombrarRegistro,
     listar: almacen.listar,

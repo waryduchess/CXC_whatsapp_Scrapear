@@ -19,6 +19,7 @@ const estadoApp = {
 
 const estadoPdf = {
     pdf: null,
+    archivo: null,
     token: 0,
     zoom: 1,
     escalaBase: 1,
@@ -158,6 +159,36 @@ function urlArchivo(archivo, inline = false) {
         ? `${base}/${encodeURIComponent(archivo.grupo)}/${encodeURIComponent(archivo.nombre)}`
         : `${base}/${encodeURIComponent(archivo.nombre)}`;
     return inline ? `${ruta}?inline=1` : ruta;
+}
+
+function estaImpreso(archivo) {
+    return Boolean(archivo?.impreso);
+}
+
+async function marcarImpreso(archivo, impreso = true) {
+    if (!archivo?.rutaRelativa) return;
+
+    archivo.impreso = impreso;
+    if (impreso) marcarFilaImpresa(archivo.rutaRelativa);
+
+    try {
+        await fetchJson('/api/comprobantes/impreso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rutaRelativa: archivo.rutaRelativa, impreso })
+        });
+    } catch (error) {
+        archivo.impreso = !impreso;
+        mostrarToast('No se pudo guardar la marca de impresión.');
+    }
+}
+
+function marcarFilaImpresa(rutaRelativa) {
+    for (const fila of el.tablaArchivos.querySelectorAll('tr[data-ruta]')) {
+        if (fila.dataset.ruta === rutaRelativa) {
+            fila.classList.add('fila-impresa');
+        }
+    }
 }
 
 function formatearBytes(bytes) {
@@ -910,7 +941,8 @@ function renderArchivos() {
     } else {
         for (const archivo of pagina) {
             const fila = document.createElement('tr');
-            fila.className = 'fila-archivo';
+            fila.className = estaImpreso(archivo) ? 'fila-archivo fila-impresa' : 'fila-archivo';
+            fila.dataset.ruta = archivo.rutaRelativa || '';
             fila.title = 'Doble clic para ver el PDF';
             fila.addEventListener('dblclick', evento => {
                 if (evento.target.closest('a, button')) return;
@@ -1210,6 +1242,7 @@ function manejarArchivoNuevo(archivo) {
 
 async function abrirPdf(archivo) {
     const token = ++estadoPdf.token;
+    estadoPdf.archivo = archivo;
     estadoPdf.paginaActual = 1;
     estadoPdf.totalPaginas = 0;
     estadoPdf.zoom = 1;
@@ -1381,6 +1414,7 @@ async function ajustarPdf() {
 function imprimirPdf() {
     if (!estadoPdf.pdf) return;
     window.print();
+    marcarImpreso(estadoPdf.archivo);
 }
 
 function cerrarPdf() {
@@ -1442,6 +1476,17 @@ function conectarEventos() {
             aplicarEstadoIA(JSON.parse(evento.data));
         } catch (error) {
             console.error('No se pudo leer el estado de IA:', error);
+        }
+    });
+
+    fuente.addEventListener('impreso', evento => {
+        try {
+            const { rutaRelativa, impreso } = JSON.parse(evento.data) || {};
+            const archivo = buscarArchivo(rutaRelativa);
+            if (archivo) archivo.impreso = Boolean(impreso);
+            renderArchivos();
+        } catch (error) {
+            console.error('No se pudo leer la marca de impresión:', error);
         }
     });
 

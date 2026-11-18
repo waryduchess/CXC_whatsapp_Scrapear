@@ -167,7 +167,8 @@ CXC_whatsapp_Scrapear/
 - Puerto por defecto: `3001`, configurable con `PANEL_PORT` en `.env`.
 - Muestra estado, QR, cuenta conectada, filtros, registros y comprobantes por fecha, grupo o chat.
 - La API interna expone `/api/salud`, `/api/estado`, `/api/logs`, `/api/eventos`,
-  `/api/comprobantes`, `/api/filtros`, `/api/grupos`, `/api/reiniciar` y `/api/abrir-carpeta`.
+  `/api/comprobantes`, `/api/comprobantes/impreso`, `/api/filtros`, `/api/grupos`,
+  `/api/reiniciar` y `/api/abrir-carpeta`.
 - La descarga acepta `/api/comprobantes/:fecha/:grupo/:archivo` y mantiene la ruta antigua
   `/api/comprobantes/:fecha/:archivo` para los comprobantes guardados en la raíz de la fecha.
 - La tabla de comprobantes se filtra por fechas, grupo/chat, banco y estado de IA
@@ -178,6 +179,8 @@ CXC_whatsapp_Scrapear/
   disponible para servir un PDF inline.
 - **Datos** abre el detalle de la extracción; **Analizar pendientes** encola los que no tienen
   resultado y **Exportar CSV** descarga la vista filtrada.
+- Al imprimir un PDF desde el visor, la fila se marca en verde claro y se guarda el booleano
+  `impreso` en `datos/comprobantes.json` mediante `POST /api/comprobantes/impreso`.
 - La API de IA expone `GET /api/ia`, `POST /api/ia/analizar` y `POST /api/ia/pendientes`.
 - El botón **Editar** abre un modal con pestañas General/Números/Grupos. Los filtros se
   guardan en `config/filtros.json` (escritura atómica), se aplican en caliente y se
