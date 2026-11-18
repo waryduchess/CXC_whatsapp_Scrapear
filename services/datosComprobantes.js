@@ -153,6 +153,25 @@ function crearAlmacen(opciones = {}) {
         return true;
     }
 
+    function renombrarRegistro(rutaAnterior, rutaNueva) {
+        const claveAnterior = normalizarRuta(rutaAnterior);
+        const claveNueva = normalizarRuta(rutaNueva);
+        if (!claveAnterior || !claveNueva || claveAnterior === claveNueva) return null;
+
+        const datos = leer();
+        const registro = datos.registros[claveAnterior];
+        if (!registro) return null;
+
+        delete datos.registros[claveAnterior];
+        datos.registros[claveNueva] = {
+            ...registro,
+            rutaRelativa: claveNueva,
+            actualizadoEn: new Date().toISOString()
+        };
+        guardar(datos);
+        return datos.registros[claveNueva];
+    }
+
     function listar() {
         return Object.values(leer().registros);
     }
@@ -177,6 +196,7 @@ function crearAlmacen(opciones = {}) {
         obtener,
         guardarRegistro,
         eliminarRegistro,
+        renombrarRegistro,
         listar,
         resumen
     };
@@ -194,6 +214,7 @@ module.exports = {
     obtener: almacen.obtener,
     guardarRegistro: almacen.guardarRegistro,
     eliminarRegistro: almacen.eliminarRegistro,
+    renombrarRegistro: almacen.renombrarRegistro,
     listar: almacen.listar,
     resumen: almacen.resumen
 };
