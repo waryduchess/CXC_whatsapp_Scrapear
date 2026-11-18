@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const iaService = require('../services/iaService');
 const datosComprobantes = require('../services/datosComprobantes');
+const { resolverComprobantesDir } = require('../services/rutas');
 const {
     rutaFecha,
     segmentosFecha,
@@ -27,7 +28,7 @@ const {
     esCarpetaDia
 } = require('../utils/fechas');
 
-const COMPROBANTES_DIR = path.join(__dirname, '..', 'comprobantes');
+const COMPROBANTES_DIR = resolverComprobantesDir();
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_ARCHIVO = /\.pdf$/i;
 

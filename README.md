@@ -158,6 +158,36 @@ npm run analizar:comprobantes -- --todos --limite 10
 npm run analizar:comprobantes -- --seco       # solo lista, sin llamar a DeepSeek
 ```
 
+## Rutas configurables y OneDrive
+
+La carpeta raíz de comprobantes se puede cambiar desde `.env`:
+
+```env
+COMPROBANTES_DIR=C:\CXC\comprobantes
+ONEDRIVE_DIR=%OneDrive%\Comprobantes
+```
+
+- `COMPROBANTES_DIR`: si está vacío usa `./comprobantes` del proyecto. Acepta rutas absolutas,
+  relativas al proyecto y variables como `%USERPROFILE%`, `%OneDrive%`, `$HOME` o `~`.
+  Si no se puede escribir, el bot no arranca y muestra el error.
+- `ONEDRIVE_DIR`: espejo opcional. Si está vacío, se desactiva. Debe ser una carpeta **local**
+  sincronizada por el cliente de OneDrive, no una unidad de red ni una ruta UNC.
+  No puede ser igual a `COMPROBANTES_DIR` ni estar una dentro de otra.
+- Cada comprobante nuevo se copia en segundo plano conservando
+  `AAAA/MM.-MES/DD MES/Grupo/archivo.pdf`, con temporal + rename y reintentos ante bloqueos
+  de OneDrive o antivirus. Un fallo del espejo no afecta el guardado.
+- No se copian `datos/`, `config/`, `logs/`, `.env` ni `node_modules/`.
+
+En Windows, antes de usar el espejo: clic derecho en la carpeta de OneDrive →
+**Mantener siempre en este dispositivo** y desactivar **Archivos a petición**.
+
+Para copiar los comprobantes existentes:
+
+```bash
+npm run onedrive:dry    # solo lista
+npm run onedrive:sync   # copia todo
+```
+
 ## Prueba sin WhatsApp
 
 ```bash

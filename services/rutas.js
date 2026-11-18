@@ -67,7 +67,22 @@ function normalizarParaComparar(ruta) {
 /* ─── Validaciones de ruta ───────────────────────────────────── */
 
 const RE_UNC       = /^\\\\[^\\]+\\/;      // \\servidor\carpeta
-const RE_RAIZ_WIN  = /^[a-zA-Z]:[/\\]?$/;  // C:\ o C:/
+
+/**
+ * Resuelve una ruta de configuración: expande variables y, si es relativa,
+ * la ancla a la raíz del proyecto (no al cwd del proceso).
+ *
+ * @param {string} valor
+ * @returns {string}
+ */
+function resolverRutaConfigurada(valor) {
+    const expandida = expandirVariables(String(valor || '').trim());
+    if (!expandida) return '';
+    if (!path.isAbsolute(expandida)) {
+        return path.resolve(__dirname, '..', expandida);
+    }
+    return path.resolve(expandida);
+}
 
 /**
  * Verifica reglas básicas de seguridad sobre una ruta resuelta.
@@ -85,7 +100,7 @@ function validarReglasBasicas(rutaResuelta, nombreVar) {
         );
     }
 
-    if (RE_RAIZ_WIN.test(rutaResuelta)) {
+    if (path.parse(rutaResuelta).root === rutaResuelta) {
         throw new Error(
             `[rutas] ${nombreVar} apunta a la raíz de una unidad ("${rutaResuelta}"). ` +
             'Elige una subcarpeta, por ejemplo C:\\CXC\\comprobantes.'
@@ -95,7 +110,7 @@ function validarReglasBasicas(rutaResuelta, nombreVar) {
     // Advertencia de MAX_PATH
     if (rutaResuelta.length > 240) {
         console.warn(
-            `[rutas] ⚠️  ADVERTENCIA MAX_PATH: ${nombreVar} tiene ${rutaResuelta.length} caracteres ` +
+            `[rutas] ADVERTENCIA MAX_PATH: ${nombreVar} tiene ${rutaResuelta.length} caracteres ` +
             `("${rutaResuelta}"). Windows limita las rutas a 260 caracteres; ` +
             'activa rutas largas o acorta la raíz.'
         );
@@ -141,10 +156,10 @@ function resolverComprobantesDir() {
     if (_comprobantesDir) return _comprobantesDir;
 
     const raw = process.env.COMPROBANTES_DIR
-        ? expandirVariables(process.env.COMPROBANTES_DIR)
-        : path.join(__dirname, '..', 'comprobantes');
+        ? process.env.COMPROBANTES_DIR
+        : './comprobantes';
 
-    const resuelta = path.resolve(raw);
+    const resuelta = resolverRutaConfigurada(raw);
     validarReglasBasicas(resuelta, 'COMPROBANTES_DIR');
 
     const error = probarEscritura(resuelta);
@@ -177,28 +192,41 @@ function resolverOneDriveDir() {
     _onedriveListo = true;
 
     const raw = process.env.ONEDRIVE_DIR
-        ? expandirVariables(process.env.ONEDRIVE_DIR)
+        ? process.env.ONEDRIVE_DIR
         : null;
 
-    if (!raw) {
+    if (!raw || !String(raw).trim()) {
         console.log('[rutas] ONEDRIVE_DIR no configurado; espejo desactivado.');
         return null;
     }
 
-    const resuelta = path.resolve(raw);
+    const resuelta = resolverRutaConfigurada(raw);
 
     try {
         validarReglasBasicas(resuelta, 'ONEDRIVE_DIR');
     } catch (err) {
         _onedriveError = err.message;
-        console.warn(`[rutas] ⚠️  ONEDRIVE_DIR inválido: ${err.message}`);
+        console.warn(`[rutas] ONEDRIVE_DIR inválido: ${err.message}`);
+        return null;
+    }
+
+    // Evitar espejo recursivo o pisar la carpeta principal.
+    const comprobantesDir = resolverComprobantesDir();
+    if (mismaRuta(resuelta, comprobantesDir)) {
+        _onedriveError = 'ONEDRIVE_DIR es la misma carpeta que COMPROBANTES_DIR';
+        console.warn(`[rutas] ONEDRIVE_DIR no puede ser igual a COMPROBANTES_DIR (${resuelta}); espejo desactivado.`);
+        return null;
+    }
+    if (estaAdentro(resuelta, comprobantesDir) || estaAdentro(comprobantesDir, resuelta)) {
+        _onedriveError = 'ONEDRIVE_DIR y COMPROBANTES_DIR no deben estar una dentro de otra';
+        console.warn('[rutas] ONEDRIVE_DIR y COMPROBANTES_DIR no deben estar una dentro de otra; espejo desactivado.');
         return null;
     }
 
     const error = probarEscritura(resuelta);
     if (error) {
         _onedriveError = error;
-        console.warn(`[rutas] ⚠️  ONEDRIVE_DIR no disponible (el bot arranca igual): ${error}`);
+        console.warn(`[rutas] ONEDRIVE_DIR no disponible (el bot arranca igual): ${error}`);
         return null;
     }
 

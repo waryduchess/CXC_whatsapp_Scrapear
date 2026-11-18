@@ -12,7 +12,8 @@ const path = require('path');
 const iaService = require('./iaService');
 const datosComprobantes = require('./datosComprobantes');
 const { eventos } = require('./estado');
-const { COMPROBANTES_DIR } = require('../mediaHandler');
+const { resolverComprobantesDir } = require('./rutas');
+const COMPROBANTES_DIR = resolverComprobantesDir();
 
 function crearCola(opciones = {}) {
     const analizar = opciones.analizar || iaService.analizarComprobante;

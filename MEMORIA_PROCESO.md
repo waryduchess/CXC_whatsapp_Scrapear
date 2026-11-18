@@ -232,9 +232,11 @@ Ambas variables se resuelven en `services/rutas.js` antes de que arranque el bot
 - Se alerta si la ruta supera 240 caracteres (límite MAX_PATH de Windows).
 - Reintentos ante bloqueos de OneDrive o antivirus: 2s → 5s → 15s → 60s → 300s.
 - Códigos reintentados: `EBUSY`, `EPERM`, `EACCES`, `ENOENT`, `EPIPE`, `EIO`.
-- No se recopia si el destino ya existe con el mismo tamaño y hash MD5.
+- No se recopia si el destino ya existe con el mismo tamaño y hash SHA-256.
 - Escritura atómica: archivo temporal + `rename` en la misma carpeta.
-- No se sincronizan: `data/`, `config/`, `logs/`, `.env`, `node_modules/`.
+- Cola secuencial con deduplicación por ruta: varios comprobantes no compiten por OneDrive.
+- `ONEDRIVE_DIR` no puede ser igual a `COMPROBANTES_DIR` ni estar una dentro de otra.
+- No se sincronizan: `datos/`, `config/`, `logs/`, `.env`, `node_modules/`.
 
 ### Módulos
 

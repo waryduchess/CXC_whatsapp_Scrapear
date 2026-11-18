@@ -9,12 +9,14 @@ const path = require('path');
 const { imagenAPdf } = require('./services/pdfService');
 const { generarNombreComprobante, sanitizarNombreCarpeta } = require('./utils/validators');
 const { rutaFecha, segmentosFecha } = require('./utils/fechas');
-const { resolverComprobantesDir } = require('./services/rutas');
-const { espejarArchivo } = require('./services/espejo');
+const { resolverComprobantesDir, resolverOneDriveDir } = require('./services/rutas');
+const { encolarEspejo } = require('./services/espejo');
 
 // Carpeta de salida — resuelve COMPROBANTES_DIR desde .env o usa el default
 // Falla en arranque si la carpeta no es escribible.
 const COMPROBANTES_DIR = resolverComprobantesDir();
+// Valida el espejo al arrancar y deja el log [rutas] aunque esté desactivado.
+resolverOneDriveDir();
 
 /**
  * Formatea una fecha como YYYY-MM-DD usando la zona horaria local.
@@ -144,10 +146,12 @@ async function guardarComprobante(preparado, nombreCliente, opciones = {}) {
         ].filter(Boolean).join('/');
         console.log(`[mediaHandler] Guardado: ${rutaRelativa} (ruta: ${rutaUsada})`);
 
-        // Espejo a OneDrive (no-op si ONEDRIVE_DIR no está configurado)
-        espejarArchivo(rutaArchivo, bufferPdf).catch(err =>
-            console.warn('[mediaHandler] Error al espejar a OneDrive:', err.message)
-        );
+        // Espejo a OneDrive en cola (no-op si ONEDRIVE_DIR no está configurado)
+        try {
+            encolarEspejo(rutaArchivo, bufferPdf);
+        } catch (err) {
+            console.warn('[mediaHandler] Error al encolar el espejo a OneDrive:', err.message);
+        }
 
         return {
             exito: true,

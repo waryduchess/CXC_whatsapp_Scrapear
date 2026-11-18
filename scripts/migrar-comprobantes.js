@@ -16,9 +16,10 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const datosComprobantes = require('../services/datosComprobantes');
+const { resolverComprobantesDir } = require('../services/rutas');
 const { rutaFecha } = require('../utils/fechas');
 
-const COMPROBANTES_DIR = path.join(__dirname, '..', 'comprobantes');
+const COMPROBANTES_DIR = resolverComprobantesDir();
 const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 function leerArgumentos(argv) {
