@@ -212,12 +212,33 @@ process.on('message', (msg) => {
 
 client.on('loading_screen', (percent, message) => {
     console.log(`[WhatsApp] Cargando: ${percent}% - ${message}`);
-    if (estado.fase === 'listo') return;
+    if (estado.fase === 'listo' || estado.fase === 'autenticando') return;
     actualizarEstado({
         fase: 'iniciando',
         detalle: `Cargando WhatsApp: ${percent}% - ${message}`
     });
 });
+
+function aplicarEstadoListo(origen = 'ready') {
+    const info = client.info || {};
+    const numero = info.wid?.user || info.me?.user || info.wid?._serialized?.split('@')[0] || null;
+    const nombre = info.pushname || info.me?.pushname || info.me?.name || null;
+
+    actualizarEstado({
+        fase: 'listo',
+        detalle: 'Conectado y escuchando mensajes',
+        qr: null,
+        ultimoError: null,
+        cuenta: {
+            nombre,
+            numero,
+            plataforma: info.platform || null
+        }
+    });
+
+    iniciarWatchdog();
+    console.log(`[WhatsApp] Estado marcado como listo (${origen}).`);
+}
 
 client.on('authenticated', () => {
     qrSecuencia++;
@@ -228,6 +249,14 @@ client.on('authenticated', () => {
         qr: null,
         cuenta: null
     });
+
+    // En algunas sesiones el evento ready no llega aunque la sesión ya funciona.
+    // Si tras unos segundos hay sesión autenticada, se marca como conectada.
+    setTimeout(() => {
+        if (estado.fase === 'listo') return;
+        if (!client.info && !client.pupPage) return;
+        aplicarEstadoListo('respaldo tras autenticación');
+    }, 10000);
 });
 
 client.on('auth_failure', (msg) => {
@@ -296,23 +325,7 @@ client.on('ready', async () => {
     qrSecuencia++;
     console.log('¡Cliente de WhatsApp listo y escuchando mensajes!');
 
-    const info = client.info || {};
-    const numero = info.wid?.user || info.me?.user || info.wid?._serialized?.split('@')[0] || null;
-    const nombre = info.pushname || info.me?.pushname || info.me?.name || null;
-
-    actualizarEstado({
-        fase: 'listo',
-        detalle: 'Conectado y escuchando mensajes',
-        qr: null,
-        ultimoError: null,
-        cuenta: {
-            nombre,
-            numero,
-            plataforma: info.platform || null
-        }
-    });
-
-    iniciarWatchdog();
+    aplicarEstadoListo('evento ready');
 
     try {
         const chats = await obtenerGruposBasicos(client);
@@ -333,6 +346,10 @@ client.on('ready', async () => {
 client.on('message_create', async (msg) => {
     // 1. Ignorar estados de WhatsApp, listas de difusión y mensajes propios
     if (msg.fromMe || msg.isStatus || msg.from === 'status@broadcast' || msg.broadcast) return;
+
+    if (estado.fase !== 'listo') {
+        aplicarEstadoListo('mensaje recibido');
+    }
 
     const mensajeConContacto = await mensajeConIdentidadTelefonica(msg);
     const mensajeParaFiltro = await resolverNombreGrupo(mensajeConContacto);
