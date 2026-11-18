@@ -161,10 +161,15 @@ CXC_whatsapp_Scrapear/
   `/api/comprobantes`, `/api/filtros`, `/api/grupos`, `/api/reiniciar` y `/api/abrir-carpeta`.
 - La descarga acepta `/api/comprobantes/:fecha/:grupo/:archivo` y mantiene la ruta antigua
   `/api/comprobantes/:fecha/:archivo` para los comprobantes guardados en la raíz de la fecha.
-- La tabla de comprobantes se filtra por fechas y por grupo/chat (multi-selección), combinados con la búsqueda.
-- La tabla tiene botones **Ver** y **Descargar**. **Ver** (o doble clic en la fila) abre un visor PDF.js
-  dentro del panel con navegación, zoom, impresión y descarga. Los archivos de PDF.js se sirven desde
-  `/vendor/pdfjs/`; la ruta `?inline=1` sigue disponible para servir un PDF inline.
+- La tabla de comprobantes se filtra por fechas, grupo/chat, banco y estado de IA
+  (multi-selección), combinados con la búsqueda.
+- La tabla tiene botones **Ver**, **Datos**, **Analizar**/**Reanalizar** y **Descargar**. **Ver**
+  (o doble clic en la fila) abre un visor PDF.js dentro del panel con navegación, zoom, impresión
+  y descarga. Los archivos de PDF.js se sirven desde `/vendor/pdfjs/`; la ruta `?inline=1` sigue
+  disponible para servir un PDF inline.
+- **Datos** abre el detalle de la extracción; **Analizar pendientes** encola los que no tienen
+  resultado y **Exportar CSV** descarga la vista filtrada.
+- La API de IA expone `GET /api/ia`, `POST /api/ia/analizar` y `POST /api/ia/pendientes`.
 - El botón **Editar** abre un modal con pestañas General/Números/Grupos. Los filtros se
   guardan en `config/filtros.json` (escritura atómica), se aplican en caliente y se
   notifican por SSE. `POST /api/filtros` valida modo, números y grupos; `GET /api/grupos`
@@ -182,7 +187,17 @@ CXC_whatsapp_Scrapear/
   Usa `msg.react()` sobre el mensaje original (no sobre el clon de identidad telefónica),
   una cola secuencial con retraso aleatorio y un registro diario en `config/reacciones.json`.
   Variables: `REACCION_ACTIVA`, `REACCION_EMOJI`, `REACCION_RETRASO_MS`, `REACCION_MAX_DIA`
-  y `REACCION_MAX_EDAD_MIN`. Un fallo de reacción nunca afecta el guardado.
+  y `REACCION_MAX_EDAD_MIN`. Un fallo de reacción nunca afecta el guardado. El emoji por
+  defecto es 🤖.
+- `services/iaService.js` extrae datos con DeepSeek (`deepseek-flash`): visión para imágenes,
+  texto para PDFs nativos y OCR (`/v1/tools/ocr`) para escaneados. Desactiva el modo thinking y
+  exige JSON estricto; normaliza monto, fecha, hora y banco antes de validar.
+- `services/datosComprobantes.js` guarda los resultados en `datos/comprobantes.json`, indexados
+  por ruta relativa (`fecha/grupo/archivo.pdf`), con hash SHA-256 y escritura atómica.
+- `services/colaIA.js` procesa un comprobante a la vez, deduplica por ruta y emite `ia`/`datos`
+  por SSE. `index.js` encola después de guardar y reaccionar, así que un fallo de IA no afecta
+  el flujo principal.
+- `scripts/analizar-comprobantes.js` permite el backfill manual por fecha, con límite y modo seco.
 
 ---
 

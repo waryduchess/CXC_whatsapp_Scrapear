@@ -5,12 +5,16 @@ const estadoApp = {
     ultimo: null,
     fechasSeleccionadas: new Set(),
     chatsSeleccionados: new Set(),
+    bancosSeleccionados: new Set(),
+    estadosIaSeleccionados: new Set(),
     busqueda: '',
     pagina: 1,
     porPagina: 20,
     logs: [],
     busquedaLog: '',
-    filtrosEditados: null
+    filtrosEditados: null,
+    ia: null,
+    datosAbiertos: null
 };
 
 const estadoPdf = {
@@ -49,6 +53,27 @@ const el = {
     menuGrupos: document.getElementById('menu-grupos'),
     gruposCount: document.getElementById('grupos-count'),
     filtroGrupos: document.getElementById('filtro-grupos'),
+    btnBancos: document.getElementById('btn-bancos'),
+    menuBancos: document.getElementById('menu-bancos'),
+    bancosCount: document.getElementById('bancos-count'),
+    filtroBancos: document.getElementById('filtro-bancos'),
+    btnEstadosIa: document.getElementById('btn-estados-ia'),
+    menuEstadosIa: document.getElementById('menu-estados-ia'),
+    estadosIaCount: document.getElementById('estados-ia-count'),
+    filtroEstadosIa: document.getElementById('filtro-estados-ia'),
+    btnAnalizarPendientes: document.getElementById('btn-analizar-pendientes'),
+    btnExportarCsv: document.getElementById('btn-exportar-csv'),
+    iaResumen: document.getElementById('ia-resumen'),
+    modalDatos: document.getElementById('modal-datos-ia'),
+    btnCerrarDatos: document.getElementById('btn-cerrar-datos'),
+    datosBackdrop: document.querySelector('#modal-datos-ia [data-cerrar-datos]'),
+    datosTitulo: document.getElementById('modal-datos-titulo'),
+    datosSubtitulo: document.getElementById('modal-datos-subtitulo'),
+    datosEstado: document.getElementById('modal-datos-estado'),
+    datosLista: document.getElementById('modal-datos-lista'),
+    datosError: document.getElementById('modal-datos-error'),
+    btnReanalizarDatos: document.getElementById('btn-reanalizar-datos'),
+    btnVerPdfDatos: document.getElementById('btn-ver-pdf-datos'),
     btnLimpiarFiltros: document.getElementById('btn-limpiar-filtros'),
     tablaArchivos: document.getElementById('tabla-archivos'),
     pagPrev: document.getElementById('pag-prev'),
@@ -145,6 +170,43 @@ function formatearBytes(bytes) {
         indice++;
     }
     return `${valor.toFixed(indice === 0 ? 0 : 1)} ${unidades[indice]}`;
+}
+
+const ETIQUETAS_IA = {
+    ok: 'Analizado',
+    incompleto: 'Incompleto',
+    error: 'Error',
+    pendiente: 'Pendiente'
+};
+
+const CAMPOS_DATOS = [
+    ['banco_origen', 'Banco origen'],
+    ['cuenta_origen_digitos', 'Cuenta origen'],
+    ['banco_destino', 'Banco destino'],
+    ['cuenta_destino_digitos', 'Cuenta destino'],
+    ['monto', 'Monto'],
+    ['fecha', 'Fecha'],
+    ['hora_operacion', 'Hora'],
+    ['folio_operacion', 'Folio'],
+    ['autenticacion', 'Autenticación'],
+    ['referencia', 'Referencia'],
+    ['clave_rastreo', 'Clave de rastreo'],
+    ['concepto', 'Concepto']
+];
+
+function estadoIA(archivo) {
+    return archivo?.analisis?.estado || 'pendiente';
+}
+
+function bancoIA(archivo) {
+    return archivo?.analisis?.datos?.banco_origen || '';
+}
+
+function formatearMonto(valor) {
+    if (valor === null || valor === undefined || valor === '') return '-';
+    const numero = Number(valor);
+    if (!Number.isFinite(numero)) return String(valor);
+    return numero.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatearFechaHora(valor) {
@@ -699,6 +761,107 @@ function renderMenuGrupos() {
     actualizarContadorGrupos();
 }
 
+function actualizarContadorBancos() {
+    const total = estadoApp.bancosSeleccionados.size;
+    el.bancosCount.textContent = total === 0 ? 'Todos' : String(total);
+}
+
+function actualizarContadorEstadosIa() {
+    const total = estadoApp.estadosIaSeleccionados.size;
+    el.estadosIaCount.textContent = total === 0 ? 'Todos' : String(total);
+}
+
+function renderMenuBancos() {
+    el.menuBancos.replaceChildren();
+
+    const bancos = new Map();
+    for (const archivo of estadoApp.archivos) {
+        const clave = bancoIA(archivo) || '';
+        const actual = bancos.get(clave) || { etiqueta: clave || 'Sin banco', cantidad: 0 };
+        actual.cantidad++;
+        bancos.set(clave, actual);
+    }
+
+    if (bancos.size === 0) {
+        const vacio = document.createElement('div');
+        vacio.className = 'muted';
+        vacio.textContent = 'Sin bancos disponibles';
+        el.menuBancos.append(vacio);
+        actualizarContadorBancos();
+        return;
+    }
+
+    const entradas = [...bancos.entries()].sort((a, b) => {
+        if (!a[0]) return 1;
+        if (!b[0]) return -1;
+        return a[1].etiqueta.localeCompare(b[1].etiqueta, 'es');
+    });
+
+    for (const [clave, banco] of entradas) {
+        const etiqueta = document.createElement('label');
+        const casilla = document.createElement('input');
+        casilla.type = 'checkbox';
+        casilla.value = clave;
+        casilla.checked = estadoApp.bancosSeleccionados.has(clave);
+        casilla.addEventListener('change', () => {
+            if (casilla.checked) estadoApp.bancosSeleccionados.add(clave);
+            else estadoApp.bancosSeleccionados.delete(clave);
+            estadoApp.pagina = 1;
+            actualizarContadorBancos();
+            renderArchivos();
+        });
+
+        const texto = document.createElement('span');
+        texto.textContent = banco.etiqueta;
+        const conteo = document.createElement('span');
+        conteo.className = 'muted';
+        conteo.textContent = `${banco.cantidad}`;
+
+        etiqueta.append(casilla, texto, conteo);
+        el.menuBancos.append(etiqueta);
+    }
+
+    actualizarContadorBancos();
+}
+
+function renderMenuEstadosIa() {
+    el.menuEstadosIa.replaceChildren();
+
+    const conteo = new Map();
+    for (const archivo of estadoApp.archivos) {
+        const clave = estadoIA(archivo);
+        conteo.set(clave, (conteo.get(clave) || 0) + 1);
+    }
+
+    const orden = ['ok', 'incompleto', 'error', 'pendiente'];
+    for (const clave of orden) {
+        if (!conteo.has(clave)) continue;
+        const etiqueta = document.createElement('label');
+        const casilla = document.createElement('input');
+        casilla.type = 'checkbox';
+        casilla.value = clave;
+        casilla.checked = estadoApp.estadosIaSeleccionados.has(clave);
+        casilla.addEventListener('change', () => {
+            if (casilla.checked) estadoApp.estadosIaSeleccionados.add(clave);
+            else estadoApp.estadosIaSeleccionados.delete(clave);
+            estadoApp.pagina = 1;
+            actualizarContadorEstadosIa();
+            renderArchivos();
+        });
+
+        const texto = document.createElement('span');
+        texto.textContent = ETIQUETAS_IA[clave] || clave;
+        const cantidad = document.createElement('span');
+        cantidad.className = 'muted';
+        cantidad.textContent = `${conteo.get(clave)}`;
+
+        etiqueta.append(casilla, texto, cantidad);
+        el.menuEstadosIa.append(etiqueta);
+    }
+
+    actualizarContadorEstadosIa();
+}
+
 function archivosFiltrados() {
     const busqueda = normalizar(estadoApp.busqueda);
     return estadoApp.archivos.filter(archivo => {
@@ -708,6 +871,14 @@ function archivosFiltrados() {
         }
         if (estadoApp.chatsSeleccionados.size > 0 &&
             !estadoApp.chatsSeleccionados.has(archivo.grupo || '')) {
+            return false;
+        }
+        if (estadoApp.bancosSeleccionados.size > 0 &&
+            !estadoApp.bancosSeleccionados.has(bancoIA(archivo))) {
+            return false;
+        }
+        if (estadoApp.estadosIaSeleccionados.size > 0 &&
+            !estadoApp.estadosIaSeleccionados.has(estadoIA(archivo))) {
             return false;
         }
         const texto = normalizar(`${archivo.grupo || ''} ${archivo.nombre}`);
@@ -731,7 +902,7 @@ function renderArchivos() {
     if (pagina.length === 0) {
         const fila = document.createElement('tr');
         const celda = document.createElement('td');
-        celda.colSpan = 6;
+        celda.colSpan = 9;
         celda.className = 'vacio';
         celda.textContent = 'No hay comprobantes que coincidan.';
         fila.append(celda);
@@ -759,6 +930,23 @@ function renderArchivos() {
             const fecha = document.createElement('td');
             fecha.textContent = archivo.fecha;
 
+            const datos = archivo.analisis?.datos;
+            const monto = document.createElement('td');
+            monto.textContent = formatearMonto(datos?.monto);
+            monto.title = datos?.monto === null || datos?.monto === undefined ? '' : `$${formatearMonto(datos.monto)}`;
+
+            const banco = document.createElement('td');
+            banco.textContent = datos?.banco_origen || '-';
+            banco.title = datos?.banco_origen || '';
+
+            const estadoCelda = document.createElement('td');
+            const chip = document.createElement('span');
+            const claveEstado = estadoIA(archivo);
+            chip.className = `ia-chip ia-${claveEstado}`;
+            chip.textContent = ETIQUETAS_IA[claveEstado] || claveEstado;
+            if (archivo.analisis?.error) chip.title = archivo.analisis.error;
+            estadoCelda.append(chip);
+
             const tamano = document.createElement('td');
             tamano.textContent = formatearBytes(archivo.tamano);
 
@@ -775,16 +963,28 @@ function renderArchivos() {
             ver.textContent = 'Ver';
             ver.addEventListener('click', () => abrirPdf(archivo));
 
+            const datosBtn = document.createElement('button');
+            datosBtn.className = 'btn btn-small';
+            datosBtn.type = 'button';
+            datosBtn.textContent = 'Datos';
+            datosBtn.addEventListener('click', () => abrirDatosIA(archivo));
+
+            const analizar = document.createElement('button');
+            analizar.className = 'btn btn-small';
+            analizar.type = 'button';
+            analizar.textContent = claveEstado === 'ok' ? 'Reanalizar' : 'Analizar';
+            analizar.addEventListener('click', () => analizarArchivo(archivo, claveEstado === 'ok'));
+
             const enlace = document.createElement('a');
             enlace.className = 'btn btn-small';
             enlace.textContent = 'Descargar';
             enlace.href = urlArchivo(archivo);
             enlace.download = archivo.nombre;
 
-            contenedorAcciones.append(ver, enlace);
+            contenedorAcciones.append(ver, datosBtn, analizar, enlace);
             acciones.append(contenedorAcciones);
 
-            fila.append(nombre, grupo, fecha, tamano, modificado, acciones);
+            fila.append(nombre, grupo, fecha, monto, banco, estadoCelda, tamano, modificado, acciones);
             el.tablaArchivos.append(fila);
         }
     }
@@ -807,10 +1007,178 @@ async function cargarComprobantes() {
     }
 
     podarGruposSeleccionados();
+    podarSeleccionesIA();
 
     renderMenuFechas();
     renderMenuGrupos();
+    renderMenuBancos();
+    renderMenuEstadosIa();
     renderArchivos();
+}
+
+function podarSeleccionesIA() {
+    const bancos = new Set(estadoApp.archivos.map(archivo => bancoIA(archivo)));
+    for (const banco of [...estadoApp.bancosSeleccionados]) {
+        if (!bancos.has(banco)) estadoApp.bancosSeleccionados.delete(banco);
+    }
+
+    const estados = new Set(estadoApp.archivos.map(archivo => estadoIA(archivo)));
+    for (const clave of [...estadoApp.estadosIaSeleccionados]) {
+        if (!estados.has(clave)) estadoApp.estadosIaSeleccionados.delete(clave);
+    }
+}
+
+function buscarArchivo(rutaRelativa) {
+    return estadoApp.archivos.find(archivo => archivo.rutaRelativa === rutaRelativa) || null;
+}
+
+function actualizarResumenIA(datos) {
+    if (datos) estadoApp.ia = datos;
+    const ia = estadoApp.ia;
+    const resumen = ia?.resumen || {};
+    const partes = [];
+
+    if (ia && ia.configurada === false) {
+        partes.push('Falta DEEPSEEK_API_KEY');
+    }
+    partes.push(`${resumen.ok || 0} analizados`);
+    if (resumen.incompleto) partes.push(`${resumen.incompleto} incompletos`);
+    if (resumen.error) partes.push(`${resumen.error} con error`);
+    if (resumen.pendiente) partes.push(`${resumen.pendiente} pendientes`);
+    if (ia?.procesando) partes.push('analizando…');
+    if (ia?.enCola) partes.push(`${ia.enCola} en cola`);
+
+    el.iaResumen.textContent = `IA: ${partes.join(' · ')}`;
+}
+
+function aplicarEstadoIA(datos) {
+    estadoApp.ia = datos;
+    actualizarResumenIA(datos);
+}
+
+async function cargarEstadoIA() {
+    try {
+        const datos = await fetchJson('/api/ia');
+        aplicarEstadoIA(datos);
+    } catch (error) {
+        console.error('No se pudo leer el estado de IA:', error);
+    }
+}
+
+async function analizarArchivo(archivo, forzar = false) {
+    try {
+        const datos = await fetchJson('/api/ia/analizar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rutaRelativa: archivo.rutaRelativa, forzar })
+        });
+        aplicarEstadoIA(datos.estado);
+        mostrarToast(datos.encolado ? 'Comprobante en cola de análisis.' : datos.mensaje);
+    } catch (error) {
+        mostrarToast(error.message);
+    }
+}
+
+async function analizarPendientes() {
+    if (!confirm('¿Analizar todos los comprobantes pendientes o con error? Puede tardar varios minutos.')) return;
+    el.btnAnalizarPendientes.disabled = true;
+    try {
+        const datos = await fetchJson('/api/ia/pendientes', { method: 'POST' });
+        aplicarEstadoIA(datos.estado);
+        mostrarToast(`${datos.encolados} comprobante${datos.encolados === 1 ? '' : 's'} en cola.`);
+    } catch (error) {
+        mostrarToast(error.message);
+    } finally {
+        el.btnAnalizarPendientes.disabled = false;
+    }
+}
+
+function exportarCsv() {
+    const archivos = archivosFiltrados();
+    const columnas = [
+        'Fecha carpeta', 'Grupo', 'Archivo', 'Monto', 'Banco origen', 'Cuenta origen',
+        'Banco destino', 'Cuenta destino', 'Fecha operación', 'Hora', 'Folio',
+        'Autenticación', 'Referencia', 'Clave de rastreo', 'Concepto', 'Estado IA'
+    ];
+
+    const escapar = valor => {
+        const texto = valor === null || valor === undefined ? '' : String(valor);
+        return `"${texto.replace(/"/g, '""')}"`;
+    };
+
+    const lineas = [columnas.map(escapar).join(',')];
+    for (const archivo of archivos) {
+        const datos = archivo.analisis?.datos || {};
+        lineas.push([
+            archivo.fecha,
+            archivo.grupo || '',
+            archivo.nombre,
+            datos.monto ?? '',
+            datos.banco_origen || '',
+            datos.cuenta_origen_digitos || '',
+            datos.banco_destino || '',
+            datos.cuenta_destino_digitos || '',
+            datos.fecha || '',
+            datos.hora_operacion || '',
+            datos.folio_operacion || '',
+            datos.autenticacion || '',
+            datos.referencia || '',
+            datos.clave_rastreo || '',
+            datos.concepto || '',
+            ETIQUETAS_IA[estadoIA(archivo)] || estadoIA(archivo)
+        ].map(escapar).join(','));
+    }
+
+    const blob = new Blob([`\uFEFF${lineas.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = `comprobantes-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
+    mostrarToast(`${archivos.length} comprobante${archivos.length === 1 ? '' : 's'} exportado${archivos.length === 1 ? '' : 's'}.`);
+}
+
+function abrirDatosIA(archivo) {
+    estadoApp.datosAbiertos = archivo;
+    el.datosTitulo.textContent = archivo.nombre;
+    el.datosSubtitulo.textContent = `${archivo.grupo || 'Sin grupo'} · ${archivo.fecha}`;
+
+    const analisis = archivo.analisis;
+    const claveEstado = estadoIA(archivo);
+    el.datosEstado.className = `ia-chip ia-${claveEstado}`;
+    el.datosEstado.textContent = ETIQUETAS_IA[claveEstado] || claveEstado;
+
+    el.datosLista.replaceChildren();
+    const datos = analisis?.datos;
+    for (const [campo, etiqueta] of CAMPOS_DATOS) {
+        const termino = document.createElement('dt');
+        termino.textContent = etiqueta;
+        const valor = document.createElement('dd');
+        const contenido = datos?.[campo];
+        valor.textContent = campo === 'monto'
+            ? (contenido === null || contenido === undefined ? '-' : `$${formatearMonto(contenido)}`)
+            : (contenido || '-');
+        el.datosLista.append(termino, valor);
+    }
+
+    if (analisis?.error) {
+        el.datosError.textContent = analisis.error;
+        el.datosError.classList.remove('hidden');
+    } else {
+        el.datosError.textContent = '';
+        el.datosError.classList.add('hidden');
+    }
+
+    el.btnReanalizarDatos.textContent = claveEstado === 'ok' ? 'Analizar de nuevo' : 'Analizar';
+    el.modalDatos.classList.remove('hidden');
+}
+
+function cerrarDatosIA() {
+    el.modalDatos.classList.add('hidden');
+    estadoApp.datosAbiertos = null;
 }
 
 function renderLogs() {
@@ -1067,6 +1435,30 @@ function conectarEventos() {
         }
     });
 
+    fuente.addEventListener('ia', evento => {
+        try {
+            aplicarEstadoIA(JSON.parse(evento.data));
+        } catch (error) {
+            console.error('No se pudo leer el estado de IA:', error);
+        }
+    });
+
+    fuente.addEventListener('datos', evento => {
+        try {
+            const { rutaRelativa, registro } = JSON.parse(evento.data) || {};
+            const archivo = buscarArchivo(rutaRelativa);
+            if (archivo) archivo.analisis = registro;
+            renderMenuBancos();
+            renderMenuEstadosIa();
+            renderArchivos();
+            if (estadoApp.datosAbiertos?.rutaRelativa === rutaRelativa) {
+                abrirDatosIA(archivo || estadoApp.datosAbiertos);
+            }
+        } catch (error) {
+            console.error('No se pudieron leer los datos del comprobante:', error);
+        }
+    });
+
     fuente.onerror = () => {
         setBadge('desconectado', 'Reconectando con el panel...');
     };
@@ -1117,11 +1509,29 @@ function initAcciones() {
     el.btnFechas.addEventListener('click', () => {
         el.menuFechas.classList.toggle('hidden');
         el.menuGrupos.classList.add('hidden');
+        el.menuBancos.classList.add('hidden');
+        el.menuEstadosIa.classList.add('hidden');
     });
 
     el.btnGrupos.addEventListener('click', () => {
         el.menuGrupos.classList.toggle('hidden');
         el.menuFechas.classList.add('hidden');
+        el.menuBancos.classList.add('hidden');
+        el.menuEstadosIa.classList.add('hidden');
+    });
+
+    el.btnBancos.addEventListener('click', () => {
+        el.menuBancos.classList.toggle('hidden');
+        el.menuFechas.classList.add('hidden');
+        el.menuGrupos.classList.add('hidden');
+        el.menuEstadosIa.classList.add('hidden');
+    });
+
+    el.btnEstadosIa.addEventListener('click', () => {
+        el.menuEstadosIa.classList.toggle('hidden');
+        el.menuFechas.classList.add('hidden');
+        el.menuGrupos.classList.add('hidden');
+        el.menuBancos.classList.add('hidden');
     });
 
     document.addEventListener('click', evento => {
@@ -1131,17 +1541,49 @@ function initAcciones() {
         if (!el.filtroGrupos.contains(evento.target)) {
             el.menuGrupos.classList.add('hidden');
         }
+        if (!el.filtroBancos.contains(evento.target)) {
+            el.menuBancos.classList.add('hidden');
+        }
+        if (!el.filtroEstadosIa.contains(evento.target)) {
+            el.menuEstadosIa.classList.add('hidden');
+        }
     });
 
     el.btnLimpiarFiltros.addEventListener('click', () => {
         estadoApp.fechasSeleccionadas.clear();
         estadoApp.chatsSeleccionados.clear();
+        estadoApp.bancosSeleccionados.clear();
+        estadoApp.estadosIaSeleccionados.clear();
         estadoApp.busqueda = '';
         estadoApp.pagina = 1;
         el.buscarArchivo.value = '';
         renderMenuFechas();
         renderMenuGrupos();
+        renderMenuBancos();
+        renderMenuEstadosIa();
         renderArchivos();
+    });
+
+    el.btnAnalizarPendientes.addEventListener('click', analizarPendientes);
+    el.btnExportarCsv.addEventListener('click', exportarCsv);
+
+    el.btnCerrarDatos.addEventListener('click', cerrarDatosIA);
+    el.datosBackdrop.addEventListener('click', cerrarDatosIA);
+    el.btnVerPdfDatos.addEventListener('click', () => {
+        const archivo = estadoApp.datosAbiertos;
+        cerrarDatosIA();
+        if (archivo) abrirPdf(archivo);
+    });
+    el.btnReanalizarDatos.addEventListener('click', () => {
+        const archivo = estadoApp.datosAbiertos;
+        if (!archivo) return;
+        cerrarDatosIA();
+        analizarArchivo(archivo, estadoIA(archivo) === 'ok');
+    });
+    document.addEventListener('keydown', evento => {
+        if (evento.key === 'Escape' && !el.modalDatos.classList.contains('hidden')) {
+            cerrarDatosIA();
+        }
     });
 
     el.btnLimpiarLogs.addEventListener('click', () => {
@@ -1209,6 +1651,7 @@ function init() {
 
     cargarEstado().catch(() => setBadge('error', 'No se pudo conectar con el servicio'));
     cargarComprobantes().catch(() => {});
+    cargarEstadoIA();
     cargarLogs().catch(() => {});
     conectarEventos();
 

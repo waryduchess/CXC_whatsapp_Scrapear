@@ -155,3 +155,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Datos financieros extraídos de los comprobantes
+datos/

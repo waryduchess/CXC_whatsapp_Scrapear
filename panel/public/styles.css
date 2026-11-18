@@ -1050,3 +1050,69 @@ select:focus {
         height: auto;
     }
 }
+
+/* --- Datos de IA --- */
+.ia-resumen {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+}
+
+.ia-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.ia-ok {
+    background: #d7f5e3;
+    color: #136b3a;
+}
+
+.ia-incompleto {
+    background: #fdf0c8;
+    color: #7a5b00;
+}
+
+.ia-error {
+    background: #fbdada;
+    color: #8f1d1d;
+}
+
+.ia-pendiente {
+    background: #e6e8ee;
+    color: #4a5163;
+}
+
+.ia-detalle-estado {
+    margin: 0 0 16px;
+}
+
+.datos-lista {
+    display: grid;
+    grid-template-columns: minmax(140px, 220px) 1fr;
+    gap: 8px 16px;
+    margin: 0 0 16px;
+}
+
+.datos-lista dt {
+    color: #5a6272;
+    font-size: 0.85rem;
+}
+
+.datos-lista dd {
+    margin: 0;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+    .ia-ok { background: #123b26; color: #7fe0a8; }
+    .ia-incompleto { background: #3d3212; color: #f0d377; }
+    .ia-error { background: #42191a; color: #f0a1a1; }
+    .ia-pendiente { background: #2a2d36; color: #b9bfcc; }
+    .datos-lista dt { color: #a3aab8; }
+}

@@ -103,9 +103,25 @@
                             </button>
                             <div id="menu-grupos" class="dropdown-menu hidden"></div>
                         </div>
+                        <div class="dropdown" id="filtro-bancos">
+                            <button id="btn-bancos" class="btn btn-small" type="button">
+                                Banco <span id="bancos-count" class="pill">Todos</span>
+                            </button>
+                            <div id="menu-bancos" class="dropdown-menu hidden"></div>
+                        </div>
+                        <div class="dropdown" id="filtro-estados-ia">
+                            <button id="btn-estados-ia" class="btn btn-small" type="button">
+                                Estado IA <span id="estados-ia-count" class="pill">Todos</span>
+                            </button>
+                            <div id="menu-estados-ia" class="dropdown-menu hidden"></div>
+                        </div>
                         <button id="btn-limpiar-filtros" class="btn btn-small" type="button">Borrar filtros</button>
+                        <button id="btn-analizar-pendientes" class="btn btn-small" type="button">Analizar pendientes</button>
+                        <button id="btn-exportar-csv" class="btn btn-small" type="button">Exportar CSV</button>
                     </div>
                 </div>
+
+                <p id="ia-resumen" class="muted ia-resumen">IA: sin datos</p>
 
                 <div class="table-wrap">
                     <table>
@@ -114,6 +130,9 @@
                                 <th>Archivo</th>
                                 <th>Grupo/Chat</th>
                                 <th>Fecha</th>
+                                <th>Monto</th>
+                                <th>Banco</th>
+                                <th>Estado IA</th>
                                 <th>Tamaño</th>
                                 <th>Modificado</th>
                                 <th></th>
@@ -262,6 +281,28 @@
                     <div id="pdf-pages" class="pdf-pages">
                         <p class="muted">Cargando PDF...</p>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-datos-ia" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-datos-titulo">
+        <div class="modal-backdrop" data-cerrar-datos></div>
+        <div class="modal-panel">
+            <div class="modal-head">
+                <div>
+                    <h2 id="modal-datos-titulo">Datos extraídos</h2>
+                    <p id="modal-datos-subtitulo" class="muted"></p>
+                </div>
+                <button id="btn-cerrar-datos" class="btn btn-small" type="button" aria-label="Cerrar">Cerrar</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-datos-estado" class="ia-detalle-estado"></p>
+                <dl id="modal-datos-lista" class="datos-lista"></dl>
+                <p id="modal-datos-error" class="advertencia hidden"></p>
+                <div class="actions">
+                    <button id="btn-reanalizar-datos" class="btn" type="button">Analizar de nuevo</button>
+                    <button id="btn-ver-pdf-datos" class="btn btn-primary" type="button">Ver PDF</button>
                 </div>
             </div>
         </div>

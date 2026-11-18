@@ -6,6 +6,9 @@ const { URL } = require('url');
 const { estado, eventos, obtenerEstado } = require('../services/estado');
 const { obtenerLogs } = require('../services/logger');
 const { COMPROBANTES_DIR } = require('../mediaHandler');
+const { encolarAnalisis, obtenerEstadoIA, resolverRutaComprobante } = require('../services/colaIA');
+const datosComprobantes = require('../services/datosComprobantes');
+const iaService = require('../services/iaService');
 const {
     validarConfig,
     guardarConfig,
@@ -167,12 +170,15 @@ function listarArchivos(fecha) {
         const agregar = (grupo, directorio, nombre) => {
             try {
                 const info = fs.statSync(path.join(directorio, nombre));
+                const rutaRelativa = [fecha, grupo, nombre].filter(Boolean).join('/');
                 archivos.push({
                     fecha,
                     grupo,
                     nombre,
+                    rutaRelativa,
                     tamano: info.size,
-                    mtime: info.mtimeMs
+                    mtime: info.mtimeMs,
+                    analisis: datosComprobantes.obtener(rutaRelativa)
                 });
             } catch (error) {
                 return;
@@ -416,10 +422,14 @@ function manejarSSE(req, res) {
     const alEstado = () => enviar('estado', { ...obtenerEstado(), filtros: resumenFiltros() });
     const alLog = (linea) => enviar('log', linea);
     const alArchivo = (archivo) => enviar('archivo', archivo);
+    const alIa = (datos) => enviar('ia', datos);
+    const alDatos = (datos) => enviar('datos', datos);
 
     eventos.on('estado', alEstado);
     eventos.on('log', alLog);
     eventos.on('archivo', alArchivo);
+    eventos.on('ia', alIa);
+    eventos.on('datos', alDatos);
 
     const latido = setInterval(() => {
         if (res.writableEnded) return;
@@ -435,6 +445,8 @@ function manejarSSE(req, res) {
         eventos.off('estado', alEstado);
         eventos.off('log', alLog);
         eventos.off('archivo', alArchivo);
+        eventos.off('ia', alIa);
+        eventos.off('datos', alDatos);
     });
 }
 
@@ -540,6 +552,91 @@ async function manejarApi(req, res, url, puerto, opciones) {
 
     if (pathname === '/api/eventos' && req.method === 'GET') {
         return manejarSSE(req, res);
+    }
+
+    if (pathname === '/api/ia' && req.method === 'GET') {
+        return responderJson(res, 200, { ok: true, ...obtenerEstadoIA() });
+    }
+
+    if (pathname === '/api/ia/analizar' && req.method === 'POST') {
+        if (!origenPermitido(req, puerto)) {
+            return responderJson(res, 403, { ok: false, error: 'Origen no permitido' });
+        }
+
+        let datos;
+        try {
+            datos = await leerCuerpoJson(req);
+        } catch (error) {
+            return responderJson(res, error.status || 400, { ok: false, error: error.message });
+        }
+
+        const rutaRelativa = String(datos?.rutaRelativa || '').trim();
+        if (!rutaRelativa) {
+            return responderJson(res, 400, { ok: false, error: 'Falta la ruta del comprobante' });
+        }
+
+        if (!iaService.estaConfigurada()) {
+            return responderJson(res, 400, {
+                ok: false,
+                error: 'Falta DEEPSEEK_API_KEY en .env'
+            });
+        }
+
+        let ruta;
+        try {
+            ruta = resolverRutaComprobante(rutaRelativa);
+        } catch (error) {
+            return responderJson(res, 400, { ok: false, error: error.message });
+        }
+
+        const encolado = encolarAnalisis({
+            rutaRelativa,
+            ruta,
+            forzar: Boolean(datos?.forzar)
+        });
+
+        return responderJson(res, 200, {
+            ok: true,
+            encolado,
+            mensaje: encolado ? 'En cola' : 'Ya estaba en la cola',
+            estado: obtenerEstadoIA()
+        });
+    }
+
+    if (pathname === '/api/ia/pendientes' && req.method === 'POST') {
+        if (!origenPermitido(req, puerto)) {
+            return responderJson(res, 403, { ok: false, error: 'Origen no permitido' });
+        }
+        req.resume();
+
+        if (!iaService.estaConfigurada()) {
+            return responderJson(res, 400, {
+                ok: false,
+                error: 'Falta DEEPSEEK_API_KEY en .env'
+            });
+        }
+
+        const archivos = listarTodo().archivos;
+        let encolados = 0;
+        for (const archivo of archivos) {
+            const estadoIA = archivo.analisis?.estado;
+            if (estadoIA === 'ok' || estadoIA === 'incompleto') continue;
+            if (!archivo.rutaRelativa) continue;
+            try {
+                if (encolarAnalisis({ rutaRelativa: archivo.rutaRelativa, forzar: true })) {
+                    encolados++;
+                }
+            } catch (error) {
+                console.warn('[panel] No se pudo encolar:', error.message || error);
+            }
+        }
+
+        return responderJson(res, 200, {
+            ok: true,
+            encolados,
+            total: archivos.length,
+            estado: obtenerEstadoIA()
+        });
     }
 
     if (pathname === '/api/comprobantes' && req.method === 'GET') {

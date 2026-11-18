@@ -118,7 +118,7 @@ que el remitente sepa que fue recibido. Se controla desde `.env`:
 
 ```env
 REACCION_ACTIVA=true
-REACCION_EMOJI=✅
+REACCION_EMOJI=🤖
 REACCION_RETRASO_MS=1500
 REACCION_MAX_DIA=200
 REACCION_MAX_EDAD_MIN=10
@@ -129,6 +129,34 @@ REACCION_MAX_EDAD_MIN=10
 - No repite reacciones sobre el mismo mensaje: el registro diario vive en `config/reacciones.json`.
 - Omite mensajes más antiguos que `REACCION_MAX_EDAD_MIN` y respeta el tope diario.
 - `REACCION_MAX_DIA=0` o `REACCION_ACTIVA=false` desactivan la función.
+
+## Extracción de datos con IA
+
+Cada comprobante nuevo se analiza en segundo plano con DeepSeek para extraer monto, fecha,
+banco, cuentas, folio, referencia, clave de rastreo y concepto. El resultado se guarda en
+`datos/comprobantes.json` (ignorado por git porque contiene datos financieros).
+
+```env
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-flash
+IA_TIMEOUT_MS=90000
+IA_REINTENTOS=3
+```
+
+- Imágenes: visión del modelo. PDFs con texto nativo: modelo de texto. PDFs escaneados: OCR de DeepSeek.
+- El análisis corre en una cola secuencial para no bloquear el guardado ni la reacción.
+- Si falta la llave, el bot guarda y reacciona igual; el panel avisa que la IA no está configurada.
+- Estados: `ok`, `incompleto` (sin monto o fecha), `error` y `pendiente`.
+- En el panel: columnas **Monto**, **Banco** y **Estado IA**, filtros por banco/estado, modal
+  **Datos**, botones **Analizar** por fila, **Analizar pendientes** y **Exportar CSV**.
+- Los comprobantes anteriores se pueden procesar manualmente:
+
+```bash
+npm run analizar:comprobantes                 # pendientes y con error
+npm run analizar:comprobantes -- --fecha 2026-11-12
+npm run analizar:comprobantes -- --todos --limite 10
+npm run analizar:comprobantes -- --seco       # solo lista, sin llamar a DeepSeek
+```
 
 ## Prueba sin WhatsApp
 

@@ -29,7 +29,7 @@ function configDesdeEntorno(env = process.env) {
 
     return {
         activa: leerBooleano(env.REACCION_ACTIVA, true),
-        emoji: emoji ? emoji.slice(0, 16) : '✅',
+        emoji: emoji ? emoji.slice(0, 16) : '🤖',
         retrasoMs: leerEntero(env.REACCION_RETRASO_MS, 1500, 0, 60000),
         maxDia: leerEntero(env.REACCION_MAX_DIA, 200, 0, 100000),
         maxEdadMin: leerEntero(env.REACCION_MAX_EDAD_MIN, 10, 0, 1440)

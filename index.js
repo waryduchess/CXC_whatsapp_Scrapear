@@ -10,6 +10,7 @@ const { filtroMensajes } = require('./services/filtroMensajes');
 const { obtenerGruposBasicos, resolverNombreGrupo } = require('./services/filtroGrupos');
 const { resolverCarpetaChat } = require('./services/carpetas');
 const { confirmarMensaje } = require('./services/reacciones');
+const { encolarAnalisis } = require('./services/colaIA');
 const { estado, actualizarEstado, eventos } = require('./services/estado');
 const { iniciarPanel } = require('./panel/server');
 const { cargarConfig, configDesdeEntorno } = require('./services/configFiltros');
@@ -411,6 +412,17 @@ client.on('message_create', async (msg) => {
                 grupo: resultado.grupo,
                 remitente: resultado.remitente
             });
+
+            try {
+                encolarAnalisis({
+                    rutaRelativa: resultado.rutaRelativa,
+                    ruta: resultado.ruta,
+                    mimetype,
+                    buffer: esImagen ? Buffer.from(media.data, 'base64') : null
+                });
+            } catch (error) {
+                console.warn('[ia] No se pudo encolar el análisis:', error.message || error);
+            }
         } else if (resultado.rutaUsada !== 'ignorado') {
             console.warn(`[index] No se pudo almacenar el archivo de ${remitente}`);
         }

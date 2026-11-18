@@ -9,12 +9,14 @@
     "test:archivos": "node scripts/probar-archivos.js",
     "pm2:start": "pm2 startOrReload ecosystem.config.js",
     "pm2:save": "pm2 save",
-    "pm2:logs": "pm2 logs cxc-whatsapp"
+    "pm2:logs": "pm2 logs cxc-whatsapp",
+    "analizar:comprobantes": "node scripts/analizar-comprobantes.js"
   },
   "keywords": [],
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^18.0.2",
+    "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^3.11.174",
     "pdfkit": "^0.20.2",
     "qrcode": "^1.5.4",
