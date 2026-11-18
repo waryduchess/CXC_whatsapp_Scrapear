@@ -210,6 +210,10 @@ process.on('message', (msg) => {
     }
 });
 
+client.on('change_state', (estadoCliente) => {
+    console.log(`[WhatsApp] Estado del cliente: ${estadoCliente}`);
+});
+
 client.on('loading_screen', (percent, message) => {
     console.log(`[WhatsApp] Cargando: ${percent}% - ${message}`);
     if (estado.fase === 'listo' || estado.fase === 'autenticando') return;
@@ -251,10 +255,34 @@ client.on('authenticated', () => {
     });
 
     // En algunas sesiones el evento ready no llega aunque la sesión ya funciona.
-    // Si tras unos segundos hay sesión autenticada, se marca como conectada.
-    setTimeout(() => {
+    // Si tras unos segundos hay sesión autenticada, se adjuntan los listeners y
+    // se marca como conectada para no quedarse sordo a los mensajes.
+    setTimeout(async () => {
         if (estado.fase === 'listo') return;
-        if (!client.info && !client.pupPage) return;
+        if (!client.pupPage) return;
+
+        try {
+            await client.attachEventListeners();
+            console.log('[WhatsApp] Listeners adjuntados manualmente.');
+        } catch (error) {
+            console.error('[WhatsApp] No se pudieron adjuntar los listeners:', error.message || error);
+        }
+
+        try {
+            const chats = await obtenerGruposBasicos(client);
+            client.__gruposPorId = new Map(
+                chats
+                    .map(chat => [
+                        chat.id?._serialized || chat.id?.toString?.() || chat.id,
+                        chat
+                    ])
+                    .filter(([id]) => typeof id === 'string' && id.endsWith('@g.us'))
+            );
+            console.log(`[filtroGrupos] Grupos cargados (respaldo): ${client.__gruposPorId.size}`);
+        } catch (error) {
+            console.warn('[filtroGrupos] No se pudo cargar la lista de grupos (respaldo):', error.message || error);
+        }
+
         aplicarEstadoListo('respaldo tras autenticación');
     }, 10000);
 });
@@ -462,6 +490,17 @@ iniciarPanel({
     client.initialize()
         .then(() => {
             iniciarWatchdog();
+            const pagina = client.pupPage;
+            if (pagina) {
+                pagina.on('pageerror', error => {
+                    console.error('[WhatsApp][página] Error:', error.message || error);
+                });
+                pagina.on('console', mensaje => {
+                    if (mensaje.type() === 'error') {
+                        console.error('[WhatsApp][página]', mensaje.text());
+                    }
+                });
+            }
         })
         .catch(async (err) => {
             console.error('[WhatsApp] Error al inicializar el cliente:', err.message || err);
